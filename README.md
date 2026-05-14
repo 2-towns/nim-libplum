@@ -7,6 +7,7 @@ libplum tries each protocol in order (PCP → NAT-PMP → UPnP-IGD) and falls ba
 ## Installation
 
 ```bash
+git submodule update --init
 nimble install
 ```
 
