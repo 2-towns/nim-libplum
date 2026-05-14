@@ -1,0 +1,3 @@
+[submodule "vendor/libplum"]
+	path = vendor/libplum
+	url = file:///home/arnaud/Work/2-towns/libplum

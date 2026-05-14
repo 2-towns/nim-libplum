@@ -1,0 +1,16 @@
+nimcache/
+
+# Compiled binaries
+*.so
+*.dylib
+*.a
+*.la
+*.exe
+*.dll
+
+/examples/port_mapping
+/tests/test_plum
+
+nimble.develop
+nimble.paths
+nimbledeps
