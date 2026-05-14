@@ -66,9 +66,12 @@ type
 
   # Define the config struct, passed by copy (usual for struct).
   plum_config_t* {.importc: "plum_config_t", header: "plum.h", bycopy.} = object
-    log_level*    {.importc: "log_level".}:    plum_log_level_t
-    log_callback* {.importc: "log_callback".}: plum_log_callback_t
-    dummytls_domain* {.importc: "dummytls_domain".}: cstring
+    log_level*        {.importc: "log_level".}:        plum_log_level_t
+    log_callback*     {.importc: "log_callback".}:     plum_log_callback_t
+    dummytls_domain*  {.importc: "dummytls_domain".}:  cstring
+    discover_timeout* {.importc: "discover_timeout".}: cint # msecs, 0 means use default (10000)
+    mapping_timeout*  {.importc: "mapping_timeout".}:  cint # msecs, 0 means use default (10000)
+    recheck_period*   {.importc: "recheck_period".}:   cint # msecs, 0 means use default (300000)
 
   # Define the mapping struct, passed by copy (usual for struct).
   # The user_ptr is a pointer to the MappingHandle in order to receive the result

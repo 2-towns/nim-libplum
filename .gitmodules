@@ -1,3 +1,4 @@
 [submodule "vendor/libplum"]
 	path = vendor/libplum
-	url = file:///home/arnaud/Work/2-towns/libplum
+	url = https://github.com/2-towns/libplum.git
+	branch = feat/configurable-timeouts

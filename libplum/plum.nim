@@ -103,7 +103,7 @@ proc mappingCallback(id: cint, state: plum_state_t,
       protocol: PlumProtocol(raw[].protocol.int),
       internalPort: raw[].internal_port,
       externalPort: raw[].external_port,
-      externalHost: $cast[cstring](unsafeAddr raw[].external_host[0])
+      externalHost: $cast[cstring](addr raw[].external_host)
     )
 
     if not handle.resolved.exchange(true):
@@ -118,13 +118,21 @@ proc mappingCallback(id: cint, state: plum_state_t,
       if not handle.onStateChange.isNil:
         handle.onStateChange(plumState, mapping)
 
-proc init*(logLevel = PLUM_LOG_LEVEL_NONE): Result[void, string] {.raises: [].} =
+proc init*(
+    logLevel: plum_log_level_t = PLUM_LOG_LEVEL_NONE,
+    discoverTimeout: int = 0,
+    mappingTimeout: int = 0,
+    recheckPeriod: int = 0
+): Result[void, string] {.raises: [].} =
   ## init MUST be called to setup internal plum thread (plum_init).
 
   var config = plum_config_t(
     log_level: logLevel,
     log_callback: nil,
-    dummytls_domain: nil
+    dummytls_domain: nil,
+    discover_timeout: discoverTimeout.cint,
+    mapping_timeout: mappingTimeout.cint,
+    recheck_period: recheckPeriod.cint
   )
 
   let res = plum_init(addr config)
@@ -146,6 +154,7 @@ proc createMapping*(
     protocol: PlumProtocol,
     internalPort: uint16,
     externalPort: uint16 = 0,
+    timeout: Duration = seconds(30),
     onStateChange: PlumStateCallback = nil
 ): Future[Result[MappingResult, string]] {.async: (raises: [CancelledError]).} =
   let signal = ThreadSignalPtr.new().valueOr:
@@ -174,24 +183,23 @@ proc createMapping*(
   var completed = false
   try:
     # Wait for the callback to fireSync
-    completed = await withTimeout(signal.wait(), seconds(30))
+    completed = await withTimeout(signal.wait(), timeout)
   except CancelledError:
+    # CancelledError skips the lines below and propagates after finally.
     raise
   finally:
     if not completed:
-      # The signal reached timeout or was cancelled,
-      # we cannot close it now otherwise the pending operation
-      # might trigger a memory issue.
-      # When entering into DESTROYING state, libplum will ignore
-      # the pending operation so closing the signal in the DESTROYED
-      # callback is safe.
+      # Timeout or cancellation: we cannot close the signal here because
+      # the C callback may fire later and call fireSync on it.
+      # Mark the handle as abandoned so the DESTROYED callback closes it.
       handle.abandoned.store(true)
       discard plum_destroy_mapping(id)
     else:
-      # The signal is completed, we can close it
+      # Signal fired normally, safe to close.
       discard signal.close()
-      
-  if not completed:  
+
+  # Reached only when completed = true (CancelledError skips this).
+  if not completed:
     return err("plum: mapping " & $id & " timed out")
 
   if handle.resolvedState == Success:
@@ -204,11 +212,16 @@ proc destroyMapping*(id: cint) {.raises: [].} =
   ## Must be called exactly once after a successful createMapping.
   discard plum_destroy_mapping(id)
 
+proc hasMapping*(id: cint): bool {.raises: [].} =
+  ## Returns true if the mapping exists and has not been destroyed yet.
+  withSafeLock:
+    result = id in activeMappings
+
 proc getLocalAddress*(): Result[string, string] {.raises: [].} =
   var buf = newString(PLUM_MAX_ADDRESS_LEN)
   let res = plum_get_local_address(buf.cstring, buf.len.csize_t)
   if res >= 0:
-    buf.setLen(min(res, PLUM_MAX_ADDRESS_LEN))
+    buf.setLen(min(res.int, PLUM_MAX_ADDRESS_LEN))
     ok(buf)
   else:
     err("plum_get_local_address failed: " & $res)

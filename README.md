@@ -6,20 +6,6 @@ libplum tries each protocol in order (PCP → NAT-PMP → UPnP-IGD) and falls ba
 
 ## Installation
 
-Clone with submodules:
-
-```bash
-git clone --recurse-submodules <REPO_URL>
-```
-
-Or after cloning:
-
-```bash
-git submodule update --init --recursive
-```
-
-Install via Nimble:
-
 ```bash
 nimble install
 ```
@@ -31,11 +17,15 @@ import chronos
 import libplum/plum
 
 proc main() {.async.} =
-  check init().isOk()
+  let initRes = init()
+  if initRes.isErr():
+    echo "init failed: ", initRes.error
+    return
 
   let r = await createMapping(TCP, 8080)
   if r.isErr():
     echo "failed: ", r.error
+    discard cleanup()
     return
 
   let res = r.value
@@ -47,7 +37,25 @@ proc main() {.async.} =
 waitFor main()
 ```
 
-See the [examples](examples) directory for a complete example.
+See [examples/port_mapping.nim](examples/port_mapping.nim) for a complete example that pauses between add and remove so you can verify the mapping on your router:
+
+```bash
+nim c -r examples/port_mapping.nim
+```
+
+### Timeouts
+
+Pass timeout options to `init` to control how long discovery and mapping wait:
+
+```nim
+discard init(discoverTimeout = 5000, mappingTimeout = 10000)
+```
+
+Pass a `timeout` to `createMapping` to control the overall wait:
+
+```nim
+let r = await createMapping(TCP, 8080, timeout = seconds(15))
+```
 
 ### Ongoing state changes
 
@@ -60,16 +68,29 @@ proc onStateChange(state: PlumState, mapping: PlumMapping) {.cdecl, raises: [], 
 let r = await createMapping(TCP, 8080, onStateChange = onStateChange)
 ```
 
-### Configurable timeouts
-
-The discovery and mapping timeouts can be configured via `init`:
+### Checking mapping state
 
 ```nim
-discard init(
-  discoverTimeout = 5000,  # ms, default 10000
-  mappingTimeout  = 5000,  # ms, default 10000
-  recheckPeriod   = 60000, # ms, default 300000
-)
+if hasMapping(id):
+  echo "mapping is still active"
+```
+
+## API
+
+See [api.md](api.md) for the full API reference.
+
+## Testing
+
+Basic tests run without a router:
+
+```bash
+nimble test
+```
+
+To run tests against a real NAT device:
+
+```bash
+NAT_TEST_PLUM=1 nimble test
 ```
 
 ## License

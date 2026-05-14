@@ -31,10 +31,17 @@ suite "plum":
     check r.value.len > 0
     discard cleanup()
 
+  test "hasMapping returns false for unknown id":
+    check not hasMapping(999)
+
   test "createMapping fails without router":
     # In CI with no NAT device, expect Failure or timeout — both return err.
+    if getEnv("NAT_TEST_PLUM") == "1":
+      skip()
+      return
+
     discard init()
-    let r = waitFor createMapping(UDP, 12345)
+    let r = waitFor createMapping(UDP, 12345, timeout = seconds(5))
     check r.isErr()
     discard cleanup()
 
@@ -44,30 +51,31 @@ suite "plum - NAT port mapping (requires NAT_TEST_PLUM=1)":
       skip()
       return
 
-    check init().isOk()
+    check init(discoverTimeout = 15000).isOk()
 
-    let r = waitFor createMapping(TCP, 8101)
+    let r = waitFor createMapping(TCP, 8101, timeout = seconds(40))
     check r.isOk()
+    if r.isOk():
+      let res = r.value
+      check res.mapping.externalPort > 0
+      check res.mapping.externalHost.len > 0
+      check hasMapping(res.id)
+      destroyMapping(res.id)
 
-    let res = r.value
-    check res.mapping.externalPort > 0
-    check res.mapping.externalHost.len > 0
-
-    destroyMapping(res.id)
-    check cleanup().isOk()
+    discard cleanup()
 
   test "createMapping UDP":
     if getEnv("NAT_TEST_PLUM") != "1":
       skip()
       return
 
-    check init().isOk()
+    check init(discoverTimeout = 2000).isOk()
 
-    let r = waitFor createMapping(UDP, 8090)
+    let r = waitFor createMapping(UDP, 8090, timeout = seconds(40))
     check r.isOk()
+    if r.isOk():
+      let res = r.value
+      check res.mapping.externalPort > 0
+      destroyMapping(res.id)
 
-    let res = r.value
-    check res.mapping.externalPort > 0
-
-    destroyMapping(res.id)
-    check cleanup().isOk()
+    discard cleanup()

@@ -10,7 +10,8 @@ installDirs   = @["libplum", "vendor"]
 ### Dependencies
 requires "nim >= 1.6.0",
          "results >= 0.4.0",
-         "chronos >= 4.2.0 & < 5.0.0"
+         "chronos >= 4.2.0 & < 5.0.0",
+         "unittest2"
 
 proc compileStaticLibraries() =
   withDir "vendor/libplum":
@@ -22,6 +23,7 @@ task buildBundledLibs, "build bundled libraries":
 
 task test, "run tests":
   compileStaticLibraries()
+  exec("nimble setup")
   exec("nim c -r tests/test_plum.nim")
 
 before install:
