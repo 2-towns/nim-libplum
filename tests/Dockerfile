@@ -36,7 +36,8 @@ COPY vendor/ vendor/
 RUN nimble setup -y
 
 # Build libplum static library
-RUN cmake -B vendor/libplum/build \
+RUN rm -rf vendor/libplum/build && \
+    cmake -B vendor/libplum/build \
     -DCMAKE_BUILD_TYPE=Release \
     -DBUILD_SHARED_LIBS=OFF \
     vendor/libplum && \
