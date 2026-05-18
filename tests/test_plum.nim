@@ -6,7 +6,7 @@
 # This file may not be copied, modified, or distributed except according to
 # those terms.
 
-import std/envvars
+import std/os
 import unittest2
 import chronos
 import libplum/plum
@@ -34,48 +34,36 @@ suite "plum":
   test "hasMapping returns false for unknown id":
     check not hasMapping(999)
 
-  test "createMapping fails without router":
-    # In CI with no NAT device, expect Failure or timeout — both return err.
-    if getEnv("NAT_TEST_PLUM") == "1":
-      skip()
-      return
+const miniupnp_protocol {.strdefine.} = ""
+# The flag is passed by the Docker / Podman container
+when miniupnp_protocol != "":
+  suite "plum - " & miniupnp_protocol & " using miniupnp":
+    test "createMapping TCP and destroyMapping":
+      check init(discoverTimeout = 15000).isOk()
 
-    discard init()
-    let r = waitFor createMapping(UDP, 12345, timeout = seconds(5))
-    check r.isErr()
-    discard cleanup()
+      let r = waitFor createMapping(TCP, 8101, timeout = seconds(40))
+      check r.isOk()
+      if r.isOk():
+        let res = r.value
+        check res.mapping.externalPort > 0
+        check res.mapping.externalHost.len > 0
+        check hasMapping(res.id)
+        if getEnv("TEST_VERBOSE") == "1":
+          echo miniupnp_protocol & " TCP: " & res.mapping.externalHost & ":" & $res.mapping.externalPort
+        destroyMapping(res.id)
 
-suite "plum - NAT port mapping (requires NAT_TEST_PLUM=1)":
-  test "createMapping TCP and destroyMapping":
-    if getEnv("NAT_TEST_PLUM") != "1":
-      skip()
-      return
+      discard cleanup()
 
-    check init(discoverTimeout = 15000).isOk()
+    test "createMapping UDP and destroying":
+      check init(discoverTimeout = 2000).isOk()
 
-    let r = waitFor createMapping(TCP, 8101, timeout = seconds(40))
-    check r.isOk()
-    if r.isOk():
-      let res = r.value
-      check res.mapping.externalPort > 0
-      check res.mapping.externalHost.len > 0
-      check hasMapping(res.id)
-      destroyMapping(res.id)
+      let r = waitFor createMapping(UDP, 8090, timeout = seconds(40))
+      check r.isOk()
+      if r.isOk():
+        let res = r.value
+        check res.mapping.externalPort > 0
+        if getEnv("TEST_VERBOSE") == "1":
+          echo miniupnp_protocol & " UDP: " & res.mapping.externalHost & ":" & $res.mapping.externalPort
+        destroyMapping(res.id)
 
-    discard cleanup()
-
-  test "createMapping UDP":
-    if getEnv("NAT_TEST_PLUM") != "1":
-      skip()
-      return
-
-    check init(discoverTimeout = 2000).isOk()
-
-    let r = waitFor createMapping(UDP, 8090, timeout = seconds(40))
-    check r.isOk()
-    if r.isOk():
-      let res = r.value
-      check res.mapping.externalPort > 0
-      destroyMapping(res.id)
-
-    discard cleanup()
+      discard cleanup()

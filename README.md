@@ -88,10 +88,20 @@ Basic tests run without a router:
 nimble test
 ```
 
-To run tests against a real NAT device:
+Integration tests run miniupnpd inside a Docker/Podman container and exercise the PCP and UPnP-IGD flows.
+Podman or Docker as fallback will be used for testing with `NET_ADMIN` capability:
 
 ```bash
-NAT_TEST_PLUM=1 nimble test
+nimble testIntegration
+```
+
+This builds the image and runs two containers: one for PCP and one for UPnP.
+Each protocol is tested under both `orc` and `refc` memory managers.
+miniupnpd is built with a stub firewall backend (`tests/miniupnpd_stub_rdr.c`) so it accepts mapping requests without requiring iptables or nftables in the container.
+To see the miniupnpd logs and the resolved external addresses, pass `TEST_VERBOSE=1`:
+
+```bash
+TEST_VERBOSE=1 nimble testIntegration
 ```
 
 ## License
