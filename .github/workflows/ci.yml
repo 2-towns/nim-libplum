@@ -15,10 +15,9 @@ jobs:
           submodules: recursive
 
       - name: Install Nim
-        uses: nim-lang/setup-nim-action@v2
+        uses: jiro4989/setup-nim-action@v2
         with:
           nim-version: "2.2.x"
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install dependencies
         run: nimble setup -y
