@@ -44,13 +44,16 @@ type
   MappingHandle = ref object
     signal: ThreadSignalPtr
     # Indicate that the first call of the mapping handle is
-    # done. In that case, resolvedState and resolvedMapping
+    # done. In that case, resolved* variables
     # will contain the result.
     # MappingHandle can be called multiple times after that,
     # but the result will be passed through the callback.
     resolved: Atomic[bool]
     resolvedState: PlumState
-    resolvedMapping: PlumMapping
+    resolvedProtocol: PlumProtocol
+    resolvedInternalPort: uint16
+    resolvedExternalPort: uint16
+    resolvedExternalHost: array[PLUM_MAX_HOST_LEN, char]
     # Use abandoned pattern for memory freeing
     abandoned: Atomic[bool]
     onStateChange: PlumStateCallback
@@ -93,29 +96,34 @@ proc mappingCallback(id: cint, state: plum_state_t,
       # signal pointer can be closed.
       if handle.abandoned.load():
         discard handle.signal.close()
+      # Release the pin set in createMapping: the C library is done with the
+      # raw pointer and will never call this callback again for this mapping.
+      GC_unref(handle)
       return
 
     # Skip states other than Success and Failure
     if plumState notin {Success, Failure}:
       return
 
-    let mapping = PlumMapping(
-      protocol: PlumProtocol(raw[].protocol.int),
-      internalPort: raw[].internal_port,
-      externalPort: raw[].external_port,
-      externalHost: $cast[cstring](addr raw[].external_host)
-    )
-
     if not handle.resolved.exchange(true):
       # If this is the first time the handle mapping
       # is called, let's set the result in the handle values,
       # and fire the signal.
       handle.resolvedState = plumState
-      handle.resolvedMapping = mapping
+      handle.resolvedProtocol = PlumProtocol(raw[].protocol.int)
+      handle.resolvedInternalPort = raw[].internal_port
+      handle.resolvedExternalPort = raw[].external_port
+      handle.resolvedExternalHost = raw[].external_host
       discard handle.signal.fireSync()
     else:
       # Otherwise, just call the callback
       if not handle.onStateChange.isNil:
+        let mapping = PlumMapping(
+          protocol: PlumProtocol(raw[].protocol.int),
+          internalPort: raw[].internal_port,
+          externalPort: raw[].external_port,
+          externalHost: $cast[cstring](addr raw[].external_host)
+        )
         handle.onStateChange(plumState, mapping)
 
 proc init*(
@@ -172,8 +180,14 @@ proc createMapping*(
     user_ptr: cast[pointer](handle)
   )
 
+  # Avoid issue with refc.
+  # Pin the handle to prevent GC: the C library holds a raw pointer to
+  # it (user_ptr) and might use it until DESTROYED fires.
+  GC_ref(handle)
+
   let id = plum_create_mapping(addr req, mappingCallback)
   if id < 0:
+    GC_unref(handle)
     discard signal.close()
     return err("plum_create_mapping failed: " & $id)
 
@@ -192,7 +206,12 @@ proc createMapping*(
       # Timeout or cancellation: we cannot close the signal here because
       # the C callback may fire later and call fireSync on it.
       # Mark the handle as abandoned so the DESTROYED callback closes it.
-      handle.abandoned.store(true)
+      # Access via activeMappings rather than the local `handle` ref,
+      # in order to make sure we have the valid reference.
+      withSafeLock:
+        let h = activeMappings.getOrDefault(id)
+        if not h.isNil:
+          h.abandoned.store(true)
       discard plum_destroy_mapping(id)
     else:
       # Signal fired normally, safe to close.
@@ -202,8 +221,24 @@ proc createMapping*(
   if not completed:
     return err("plum: mapping " & $id & " timed out")
 
-  if handle.resolvedState == Success:
-    return ok(MappingResult(id: id, mapping: handle.resolvedMapping))
+  # Read result via activeMappings rather than the local `handle` ref in
+  # order to make sure we have the valid reference.
+  var resolvedState: PlumState
+  var resolvedMapping: PlumMapping
+
+  withSafeLock:
+    let h = activeMappings.getOrDefault(id)
+    if not h.isNil:
+      resolvedState = h.resolvedState
+      resolvedMapping = PlumMapping(
+        protocol: h.resolvedProtocol,
+        internalPort: h.resolvedInternalPort,
+        externalPort: h.resolvedExternalPort,
+        externalHost: $cast[cstring](unsafeAddr h.resolvedExternalHost)
+      )
+
+  if resolvedState == Success:
+    return ok(MappingResult(id: id, mapping: resolvedMapping))
   else:
     discard plum_destroy_mapping(id)
     return err("plum: mapping " & $id & " failed")
