@@ -7,9 +7,24 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
-    uses: status-im/nimbus-common-workflow/.github/workflows/common.yml@main
-    with:
-      test-command: |
-        nimble test
-        nimble testIntegration
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Nim
+        uses: nim-lang/setup-nim-action@v2
+        with:
+          nim-version: "2.2.x"
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install dependencies
+        run: nimble setup -y
+
+      - name: Unit tests
+        run: nimble test
+
+      - name: Integration tests
+        run: nimble testIntegration
