@@ -60,6 +60,14 @@ type
     PLUM_STATE_SUCCESS    = 2
     PLUM_STATE_FAILURE    = 3
     PLUM_STATE_DESTROYING = 4
+
+  plum_mapping_protocol_t* {.importc: "plum_mapping_protocol_t", header: "plum.h",
+                              size: sizeof(cint).} = enum
+    PLUM_MAPPING_PROTOCOL_UNKNOWN = 0
+    PLUM_MAPPING_PROTOCOL_PCP     = 1
+    PLUM_MAPPING_PROTOCOL_NATPMP  = 2
+    PLUM_MAPPING_PROTOCOL_UPNP    = 3
+    PLUM_MAPPING_PROTOCOL_DIRECT  = 4
   
   # Define the callback to receive the plum logs
   plum_log_callback_t* = proc(level: plum_log_level_t, message: cstring) {.cdecl.}
@@ -76,11 +84,12 @@ type
   # Define the mapping struct, passed by copy (usual for struct).
   # The user_ptr is a pointer to the MappingHandle in order to receive the result
   plum_mapping_t* {.importc: "plum_mapping_t", header: "plum.h", bycopy.} = object
-    protocol*      {.importc: "protocol".}:      plum_ip_protocol_t
-    internal_port* {.importc: "internal_port".}: uint16
-    external_port* {.importc: "external_port".}: uint16
-    external_host* {.importc: "external_host".}: array[PLUM_MAX_HOST_LEN, char]
-    user_ptr*      {.importc: "user_ptr".}:      pointer
+    protocol*         {.importc: "protocol".}:         plum_ip_protocol_t
+    mapping_protocol* {.importc: "mapping_protocol".}: plum_mapping_protocol_t
+    internal_port*    {.importc: "internal_port".}:    uint16
+    external_port*    {.importc: "external_port".}:    uint16
+    external_host*    {.importc: "external_host".}:    array[PLUM_MAX_HOST_LEN, char]
+    user_ptr*         {.importc: "user_ptr".}:         pointer
 
   # Define the callback to receive the mapping result
   plum_mapping_callback_t* =

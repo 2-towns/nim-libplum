@@ -10,6 +10,7 @@ import std/os
 import unittest2
 import chronos
 import libplum/plum
+import libplum/libplum
 
 suite "plum":
   test "init and cleanup":
@@ -36,10 +37,14 @@ suite "plum":
 
 const miniupnp_protocol {.strdefine.} = ""
 # The flag is passed by the Docker / Podman container
-when miniupnp_protocol != "":
-  suite "plum - " & miniupnp_protocol & " using miniupnp":
-    test "createMapping TCP and destroyMapping":
-      check init(discoverTimeout = 15000).isOk()
+when miniupnp_protocol == "natpmp":
+  # miniupnpd is compiled without PCP: PCP probes time out and libplum must
+  # fall back to NAT-PMP on its own.
+  suite "plum - natpmp fallback (PCP timeout)":
+    test "createMapping TCP via NAT-PMP fallback":
+      let logLevel = if getEnv("LIBPLUM_VERBOSE") == "1": PLUM_LOG_LEVEL_VERBOSE
+                     else: PLUM_LOG_LEVEL_NONE
+      check init(discoverTimeout = 15000, logLevel = logLevel).isOk()
 
       let r = waitFor createMapping(TCP, 8101, timeout = seconds(40))
       check r.isOk()
@@ -47,6 +52,28 @@ when miniupnp_protocol != "":
         let res = r.value
         check res.mapping.externalPort > 0
         check res.mapping.externalHost.len > 0
+        check res.mapping.mappingProtocol == NatPmp
+        check hasMapping(res.id)
+        if getEnv("TEST_VERBOSE") == "1":
+          echo "NAT-PMP TCP: " & res.mapping.externalHost & ":" & $res.mapping.externalPort
+        destroyMapping(res.id)
+
+      discard cleanup()
+
+elif miniupnp_protocol != "":
+  suite "plum - " & miniupnp_protocol & " using miniupnp":
+    test "createMapping TCP and destroyMapping":
+      let logLevel = if getEnv("LIBPLUM_VERBOSE") == "1": PLUM_LOG_LEVEL_VERBOSE
+                     else: PLUM_LOG_LEVEL_NONE
+      check init(discoverTimeout = 15000, logLevel = logLevel).isOk()
+
+      let r = waitFor createMapping(TCP, 8101, timeout = seconds(40))
+      check r.isOk()
+      if r.isOk():
+        let res = r.value
+        check res.mapping.externalPort > 0
+        check res.mapping.externalHost.len > 0
+        check res.mapping.mappingProtocol == (if miniupnp_protocol == "pcp": PCP else: UPnP)
         check hasMapping(res.id)
         if getEnv("TEST_VERBOSE") == "1":
           echo miniupnp_protocol & " TCP: " & res.mapping.externalHost & ":" & $res.mapping.externalPort
@@ -55,13 +82,16 @@ when miniupnp_protocol != "":
       discard cleanup()
 
     test "createMapping UDP and destroying":
-      check init(discoverTimeout = 2000).isOk()
+      let logLevel = if getEnv("LIBPLUM_VERBOSE") == "1": PLUM_LOG_LEVEL_VERBOSE
+                     else: PLUM_LOG_LEVEL_NONE
+      check init(discoverTimeout = 2000, logLevel = logLevel).isOk()
 
       let r = waitFor createMapping(UDP, 8090, timeout = seconds(40))
       check r.isOk()
       if r.isOk():
         let res = r.value
         check res.mapping.externalPort > 0
+        check res.mapping.mappingProtocol == (if miniupnp_protocol == "pcp": PCP else: UPnP)
         if getEnv("TEST_VERBOSE") == "1":
           echo miniupnp_protocol & " UDP: " & res.mapping.externalHost & ":" & $res.mapping.externalPort
         destroyMapping(res.id)

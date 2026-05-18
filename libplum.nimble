@@ -30,9 +30,12 @@ task test, "run tests":
 task testIntegration, "run miniupnpd integration tests in Docker / Podman":
   let docker = if findExe("podman") != "": "podman" else: "docker"
   exec(docker & " build -t " & packageName & " -f tests/Dockerfile .")
-  let verbose = if getEnv("TEST_VERBOSE") != "": " -e TEST_VERBOSE=" & getEnv("TEST_VERBOSE") else: ""
-  exec(docker & " run --rm --cap-add=NET_ADMIN -e TEST_MINIUPNP_PCP=1" & verbose & " " & packageName)
-  exec(docker & " run --rm --cap-add=NET_ADMIN -e TEST_MINIUPNP_UPNP=1" & verbose & " " & packageName)
+  proc envFlag(name: string): string =
+    if getEnv(name) != "": " -e " & name & "=" & getEnv(name) else: ""
+  let flags = envFlag("TEST_VERBOSE") & envFlag("MINIUPNPD_VERBOSE") & envFlag("LIBPLUM_VERBOSE")
+  exec(docker & " run --rm --cap-add=NET_ADMIN -e TEST_MINIUPNP_PCP=1" & flags & " " & packageName)
+  exec(docker & " run --rm --cap-add=NET_ADMIN -e TEST_MINIUPNP_UPNP=1" & flags & " " & packageName)
+  exec(docker & " run --rm --cap-add=NET_ADMIN -e TEST_MINIUPNP_NATPMP=1" & flags & " " & packageName)
 
 before install:
   compileStaticLibraries()

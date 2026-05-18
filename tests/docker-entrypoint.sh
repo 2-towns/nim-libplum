@@ -14,7 +14,7 @@ ip addr add 1.2.3.4/24 dev plum-wan
 ip link set plum-wan up
 
 start_miniupnpd() {
-    local proto=$1 enable_pcp_pmp=$2 listen_on=$3
+    local proto=$1 enable_pcp_pmp=$2 listen_on=$3 binary=${4:-miniupnpd}
     local conf="$RUNDIR/miniupnpd-$proto.conf"
     local pidfile="$RUNDIR/miniupnpd-$proto.pid"
 
@@ -29,7 +29,7 @@ port=0
 allow 1024-65535 0.0.0.0/0 1024-65535
 EOF
     # -d: don't daemonize; we background it ourselves with & to capture the pid.
-    miniupnpd -d -f "$conf" > "$RUNDIR/miniupnpd-$proto.log" 2>&1 &
+    "$binary" -d -f "$conf" > "$RUNDIR/miniupnpd-$proto.log" 2>&1 &
     echo $! > "$pidfile"
     sleep 1
     kill -0 "$(cat "$pidfile")" 2>/dev/null \
@@ -44,7 +44,7 @@ run_tests() {
         echo "--- $proto $mm ---"
         "/app/tests/test_${proto}_${mm}" || failed=1
     done
-    if [ "${TEST_VERBOSE:-}" = "1" ]; then
+    if [ "${MINIUPNPD_VERBOSE:-}" = "1" ]; then
         echo "--- miniupnpd log ---"
         cat "$logfile" 2>/dev/null || true
     fi
@@ -65,5 +65,15 @@ fi
 if [ "${TEST_MINIUPNP_UPNP:-}" = "1" ]; then
     start_miniupnpd upnp no "$LAN_IF"
     run_tests upnp "$RUNDIR/miniupnpd-upnp.log"
+fi
+
+if [ "${TEST_MINIUPNP_NATPMP:-}" = "1" ]; then
+    # miniupnpd-natpmponly is compiled without ENABLE_PCP: PCP probes get no
+    # response (timeout) and libplum must fall back to NAT-PMP on its own.
+    # Same route trick as PCP: point the default route at LAN_IP so libplum
+    # sends NAT-PMP to the local miniupnpd rather than the real gateway.
+    ip route replace default via "$LAN_IP" dev "$LAN_IF"
+    start_miniupnpd natpmp yes "$LAN_IF" miniupnpd-natpmponly
+    run_tests natpmp "$RUNDIR/miniupnpd-natpmp.log"
 fi
 

@@ -18,8 +18,18 @@ type PlumState* = enum
 ```
 
 ```nim
+type MappingProtocol* = enum
+  Unknown  ## not yet determined (mapping pending)
+  PCP      ## Port Control Protocol
+  NatPmp   ## NAT Port Mapping Protocol
+  UPnP     ## UPnP-IGD
+  Direct   ## no mapping needed, local address is already public
+```
+
+```nim
 type PlumMapping* = object
-  protocol*: PlumProtocol
+  protocol*: PlumProtocol        ## IP protocol (TCP/UDP)
+  mappingProtocol*: MappingProtocol  ## NAT traversal protocol used
   internalPort*: uint16
   externalPort*: uint16
   externalHost*: string
@@ -51,7 +61,7 @@ proc init*(
 
 Initializes the library and starts the internal thread. Must be called before any other proc.
 
-- `logLevel`: verbosity of internal logs (default: none)
+- `logLevel`: verbosity of internal logs, from `PLUM_LOG_LEVEL_VERBOSE` to `PLUM_LOG_LEVEL_NONE` (default: none); import `libplum/libplum` to access these constants
 - `discoverTimeout`: how long to probe for a NAT device, in ms (default: 10000)
 - `mappingTimeout`: how long to wait for a mapping response, in ms (default: 10000)
 - `recheckPeriod`: interval between periodic mapping rechecks, in ms (default: 300000)
@@ -84,7 +94,7 @@ Requests a port mapping from the NAT device. Tries PCP, then NAT-PMP, then UPnP-
 - `timeout`: how long to wait for the mapping to be established (default: 30s)
 - `onStateChange`: optional callback invoked when the mapping state changes after the initial result
 
-Returns a `MappingResult` containing the mapping `id` (needed for `destroyMapping`) and the `PlumMapping` with the external address and port.
+Returns a `MappingResult` containing the mapping `id` (needed for `destroyMapping`) and the `PlumMapping` with the external address, port, and `mappingProtocol` indicating which protocol was used (`PCP`, `NatPmp`, or `UPnP`).
 
 Returns an error if no NAT device is found, the mapping fails, or the timeout expires.
 

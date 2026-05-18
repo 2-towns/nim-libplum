@@ -28,8 +28,16 @@ type
     Failure    = PLUM_STATE_FAILURE.int
     Destroying = PLUM_STATE_DESTROYING.int
 
+  MappingProtocol* = enum
+    Unknown = PLUM_MAPPING_PROTOCOL_UNKNOWN.int
+    PCP     = PLUM_MAPPING_PROTOCOL_PCP.int
+    NatPmp  = PLUM_MAPPING_PROTOCOL_NATPMP.int
+    UPnP    = PLUM_MAPPING_PROTOCOL_UPNP.int
+    Direct  = PLUM_MAPPING_PROTOCOL_DIRECT.int
+
   PlumMapping* = object
     protocol*: PlumProtocol
+    mappingProtocol*: MappingProtocol
     internalPort*: uint16
     externalPort*: uint16
     externalHost*: string
@@ -51,6 +59,7 @@ type
     resolved: Atomic[bool]
     resolvedState: PlumState
     resolvedProtocol: PlumProtocol
+    resolvedMappingProtocol: MappingProtocol
     resolvedInternalPort: uint16
     resolvedExternalPort: uint16
     resolvedExternalHost: array[PLUM_MAX_HOST_LEN, char]
@@ -111,6 +120,7 @@ proc mappingCallback(id: cint, state: plum_state_t,
       # and fire the signal.
       handle.resolvedState = plumState
       handle.resolvedProtocol = PlumProtocol(raw[].protocol.int)
+      handle.resolvedMappingProtocol = MappingProtocol(raw[].mapping_protocol.int)
       handle.resolvedInternalPort = raw[].internal_port
       handle.resolvedExternalPort = raw[].external_port
       handle.resolvedExternalHost = raw[].external_host
@@ -120,6 +130,7 @@ proc mappingCallback(id: cint, state: plum_state_t,
       if not handle.onStateChange.isNil:
         let mapping = PlumMapping(
           protocol: PlumProtocol(raw[].protocol.int),
+          mappingProtocol: MappingProtocol(raw[].mapping_protocol.int),
           internalPort: raw[].internal_port,
           externalPort: raw[].external_port,
           externalHost: $cast[cstring](addr raw[].external_host)
@@ -232,6 +243,7 @@ proc createMapping*(
       resolvedState = h.resolvedState
       resolvedMapping = PlumMapping(
         protocol: h.resolvedProtocol,
+        mappingProtocol: h.resolvedMappingProtocol,
         internalPort: h.resolvedInternalPort,
         externalPort: h.resolvedExternalPort,
         externalHost: $cast[cstring](unsafeAddr h.resolvedExternalHost)

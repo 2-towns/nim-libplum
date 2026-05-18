@@ -31,6 +31,7 @@ proc main() {.async.} =
 
   let res = r.value
   echo "external: ", res.mapping.externalHost, ":", res.mapping.externalPort
+  echo "protocol: ", res.mapping.mappingProtocol  # PCP, NatPmp, UPnP, or Direct
 
   destroyMapping(res.id)
   discard cleanup()
@@ -95,13 +96,19 @@ Podman or Docker as fallback will be used for testing with `NET_ADMIN` capabilit
 nimble testIntegration
 ```
 
-This builds the image and runs two containers: one for PCP and one for UPnP.
+This builds the image and runs three containers: PCP, UPnP, and a NAT-PMP fallback scenario
+(miniupnpd compiled without PCP so libplum must fall back from PCP timeout to NAT-PMP).
 Each protocol is tested under both `orc` and `refc` memory managers.
 miniupnpd is built with a stub firewall backend (`tests/miniupnpd_stub_rdr.c`) so it accepts mapping requests without requiring iptables or nftables in the container.
-To see the miniupnpd logs and the resolved external addresses, pass `TEST_VERBOSE=1`:
+
+Three env vars control verbosity:
+
+- `TEST_VERBOSE=1`: print resolved external addresses
+- `MINIUPNPD_VERBOSE=1`: print miniupnpd logs
+- `LIBPLUM_VERBOSE=1`: enable verbose libplum internal logs
 
 ```bash
-TEST_VERBOSE=1 nimble testIntegration
+TEST_VERBOSE=1 MINIUPNPD_VERBOSE=1 LIBPLUM_VERBOSE=1 nimble testIntegration
 ```
 
 ## License
