@@ -12,6 +12,12 @@ import chronos/threadsync
 import results
 import ./libplum
 
+{.emit: """
+#ifdef __GNUC__
+#pragma GCC diagnostic ignored "-Wincompatible-pointer-types"
+#endif
+""".}
+
 export results
 
 {.pragma: callback, cdecl, raises: [], gcsafe.}
