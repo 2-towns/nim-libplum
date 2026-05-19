@@ -89,8 +89,10 @@ Basic tests run without a router:
 nimble test
 ```
 
-Integration tests run miniupnpd inside a Docker/Podman container and exercise the PCP and UPnP-IGD flows.
-Podman or Docker as fallback will be used for testing with `NET_ADMIN` capability:
+Integration tests run miniupnpd inside a Docker/Podman container and exercise the PCP, NAT-PMP, and UPnP-IGD flows.
+The container needs `NET_ADMIN` to create a dummy network interface (`plum-wan`) with a public IP (1.2.3.4).
+This is required because miniupnpd [disables port forwarding when the external interface has a private/RFC1918 address](https://github.com/miniupnp/miniupnp/blob/d66872e34d9ff83a07f8b71371b13419b2089953/miniupnpd/miniupnpd.c#L1160-L1193), which would be the case for any container network interface.
+Tests run inside the container (not with `--network host`) so the dummy interface and route changes stay isolated from the host network.
 
 ```bash
 nimble testIntegration
