@@ -17,6 +17,7 @@ proc compileStaticLibraries() =
   withDir "vendor/libplum":
     exec("cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF")
     exec("cmake --build build")
+    cpFile("build/libplum.a", "libplum.a")
 
 task buildBundledLibs, "build bundled libraries":
   compileStaticLibraries()
