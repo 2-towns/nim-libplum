@@ -26,4 +26,10 @@ jobs:
         run: nimble test
 
       - name: Integration tests
-        run: nimble testIntegration
+        # we call docker directly instead of nimble testIntegration because nimble
+        # exits with code 0 even when exec() fails, which would make CI pass on failure.
+        run: |
+          docker build -t libplum -f tests/Dockerfile .
+          docker run --rm --cap-add=NET_ADMIN -e TEST_MINIUPNP_PCP=1 libplum
+          docker run --rm --cap-add=NET_ADMIN -e TEST_MINIUPNP_UPNP=1 libplum
+          docker run --rm --cap-add=NET_ADMIN -e TEST_MINIUPNP_NATPMP=1 libplum
