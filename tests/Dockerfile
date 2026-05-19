@@ -16,7 +16,10 @@ RUN git clone --depth=1 --branch miniupnpd_2_3_9 \
     && cp /tmp/stub_rdr.c . \
     && make NETFILTEROBJS=stub_rdr.o miniupnpd \
     && install -m 755 miniupnpd /usr/local/sbin/miniupnpd \
-    && sed -i 's/^#define ENABLE_PCP$/\/*#define ENABLE_PCP*\//' config.h \
+    # Build another miniupnpd for pmp: we need to disable explictly PCP for that
+    # check miniupnpd configure for more info.
+    # https://github.com/miniupnp/miniupnp/blob/50cb0582d4a659e319050069aa84efbc1f353b14/miniupnpd/configure#L878-L880
+    && sed -i 's/^#idefine ENABLE_PCP$/\/*#define ENABLE_PCP*\//' config.h \
     && make NETFILTEROBJS=stub_rdr.o miniupnpd \
     && install -m 755 miniupnpd /usr/local/sbin/miniupnpd-natpmponly \
     && rm -rf /tmp/miniupnp /tmp/stub_rdr.c

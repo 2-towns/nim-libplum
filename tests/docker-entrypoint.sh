@@ -4,11 +4,14 @@ set -euo pipefail
 RUNDIR=/tmp/plum-test
 mkdir -p "$RUNDIR"
 
+# miniupnpd must listen on the same interface as libplum.
+# we get the default route interface (e.g. eth0) and use it to receive libplum requests.
 LAN_IF=$(ip route show default | awk '/default/{print $5; exit}')
+# get its IP and use it as a fake router so libplum sends PCP/NAT-PMP requests to miniupnpd.
 LAN_IP=$(ip -4 addr show "$LAN_IF" | awk '/inet /{print $2; exit}' | cut -d/ -f1)
 
-# Use a public (non-reserved) WAN IP. miniupnpd disables port forwarding when
-# the external interface has a private/RFC1918 address (treats it as double-NAT).
+# we use a public WAN IP (1.2.3.4) on a dummy interface because miniupnpd disables
+# port forwarding when the external interface has a private/RFC1918 address (treats it as double-NAT).
 ip link add plum-wan type dummy
 ip addr add 1.2.3.4/24 dev plum-wan
 ip link set plum-wan up
@@ -52,11 +55,8 @@ run_tests() {
 }
 
 if [ "${TEST_MINIUPNP_PCP:-}" = "1" ]; then
-    # PCP requires the UDP source IP to equal the client_address field in the
-    # MAP request header. libplum sets client_address by connecting a UDP socket
-    # to the gateway IP. Pointing the default route at LAN_IP makes libplum
-    # use LAN_IP as both the gateway (where it sends PCP) and the source IP,
-    # so the two match and miniupnpd accepts the request without ADDRESS_MISMATCH.
+    # PCP requires the UDP source IP to match the client_address in the MAP request.
+    # we point the default route at LAN_IP so libplum uses it as both gateway and source IP.
     ip route replace default via "$LAN_IP" dev "$LAN_IF"
     start_miniupnpd pcp yes "$LAN_IF"
     run_tests pcp "$RUNDIR/miniupnpd-pcp.log"
@@ -68,10 +68,8 @@ if [ "${TEST_MINIUPNP_UPNP:-}" = "1" ]; then
 fi
 
 if [ "${TEST_MINIUPNP_NATPMP:-}" = "1" ]; then
-    # miniupnpd-natpmponly is compiled without ENABLE_PCP: PCP probes get no
-    # response (timeout) and libplum must fall back to NAT-PMP on its own.
-    # Same route trick as PCP: point the default route at LAN_IP so libplum
-    # sends NAT-PMP to the local miniupnpd rather than the real gateway.
+    # miniupnpd-natpmponly has no PCP support, so libplum falls back to NAT-PMP.
+    # same route trick as PCP: point the default route at LAN_IP so libplum sends NAT-PMP to miniupnpd.
     ip route replace default via "$LAN_IP" dev "$LAN_IF"
     start_miniupnpd natpmp yes "$LAN_IF" miniupnpd-natpmponly
     run_tests natpmp "$RUNDIR/miniupnpd-natpmp.log"
