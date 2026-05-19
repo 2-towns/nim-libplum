@@ -41,14 +41,20 @@ const miniupnp_protocol {.strdefine.} = ""
 # must fall back to NAT-PMP on its own (tests the silent-timeout fallback fix).
 when miniupnp_protocol != "":
   const expectedMappingProtocol =
-    when miniupnp_protocol == "pcp": PCP
-    elif miniupnp_protocol == "natpmp": NatPmp
-    else: UPnP
+    when miniupnp_protocol == "pcp":
+      PCP
+    elif miniupnp_protocol == "natpmp":
+      NatPmp
+    else:
+      UPnP
 
   suite "plum - " & miniupnp_protocol & " using miniupnp":
     test "createMapping TCP and destroyMapping":
-      let logLevel = if getEnv("LIBPLUM_VERBOSE") == "1": PLUM_LOG_LEVEL_VERBOSE
-                     else: PLUM_LOG_LEVEL_NONE
+      let logLevel =
+        if getEnv("LIBPLUM_VERBOSE") == "1":
+          PLUM_LOG_LEVEL_VERBOSE
+        else:
+          PLUM_LOG_LEVEL_NONE
       check init(discoverTimeout = 15000, logLevel = logLevel).isOk()
 
       let r = waitFor createMapping(TCP, 8101, timeout = seconds(40))
@@ -60,14 +66,18 @@ when miniupnp_protocol != "":
         check res.mapping.mappingProtocol == expectedMappingProtocol
         check hasMapping(res.id)
         if getEnv("TEST_VERBOSE") == "1":
-          echo miniupnp_protocol & " TCP: " & res.mapping.externalHost & ":" & $res.mapping.externalPort
+          echo miniupnp_protocol & " TCP: " & res.mapping.externalHost & ":" &
+            $res.mapping.externalPort
         destroyMapping(res.id)
 
       discard cleanup()
 
     test "createMapping UDP and destroying":
-      let logLevel = if getEnv("LIBPLUM_VERBOSE") == "1": PLUM_LOG_LEVEL_VERBOSE
-                     else: PLUM_LOG_LEVEL_NONE
+      let logLevel =
+        if getEnv("LIBPLUM_VERBOSE") == "1":
+          PLUM_LOG_LEVEL_VERBOSE
+        else:
+          PLUM_LOG_LEVEL_NONE
       check init(discoverTimeout = 2000, logLevel = logLevel).isOk()
 
       let r = waitFor createMapping(UDP, 8090, timeout = seconds(40))
@@ -77,7 +87,8 @@ when miniupnp_protocol != "":
         check res.mapping.externalPort > 0
         check res.mapping.mappingProtocol == expectedMappingProtocol
         if getEnv("TEST_VERBOSE") == "1":
-          echo miniupnp_protocol & " UDP: " & res.mapping.externalHost & ":" & $res.mapping.externalPort
+          echo miniupnp_protocol & " UDP: " & res.mapping.externalHost & ":" &
+            $res.mapping.externalPort
         destroyMapping(res.id)
 
       discard cleanup()

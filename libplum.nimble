@@ -19,6 +19,9 @@ proc compileStaticLibraries() =
     exec("cmake --build build")
     cpFile("build/libplum.a", "libplum.a")
 
+task format, "format Nim code using nph":
+  exec "nph libplum/ tests/"
+
 task buildBundledLibs, "build bundled libraries":
   compileStaticLibraries()
 

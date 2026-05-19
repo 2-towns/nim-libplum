@@ -12,11 +12,13 @@ import chronos/threadsync
 import results
 import ./libplum
 
-{.emit: """
+{.
+  emit: """
 #ifdef __GNUC__
 #pragma GCC diagnostic ignored "-Wincompatible-pointer-types"
 #endif
-""".}
+"""
+.}
 
 export results
 
@@ -28,18 +30,18 @@ type
     UDP = PLUM_IP_PROTOCOL_UDP.int
 
   PlumState* = enum
-    Destroyed  = PLUM_STATE_DESTROYED.int
-    Pending    = PLUM_STATE_PENDING.int
-    Success    = PLUM_STATE_SUCCESS.int
-    Failure    = PLUM_STATE_FAILURE.int
+    Destroyed = PLUM_STATE_DESTROYED.int
+    Pending = PLUM_STATE_PENDING.int
+    Success = PLUM_STATE_SUCCESS.int
+    Failure = PLUM_STATE_FAILURE.int
     Destroying = PLUM_STATE_DESTROYING.int
 
   MappingProtocol* = enum
     Unknown = PLUM_MAPPING_PROTOCOL_UNKNOWN.int
-    PCP     = PLUM_MAPPING_PROTOCOL_PCP.int
-    NatPmp  = PLUM_MAPPING_PROTOCOL_NATPMP.int
-    UPnP    = PLUM_MAPPING_PROTOCOL_UPNP.int
-    Direct  = PLUM_MAPPING_PROTOCOL_DIRECT.int
+    PCP = PLUM_MAPPING_PROTOCOL_PCP.int
+    NatPmp = PLUM_MAPPING_PROTOCOL_NATPMP.int
+    UPnP = PLUM_MAPPING_PROTOCOL_UPNP.int
+    Direct = PLUM_MAPPING_PROTOCOL_DIRECT.int
 
   PlumMapping* = object
     protocol*: PlumProtocol
@@ -52,8 +54,7 @@ type
     id*: cint
     mapping*: PlumMapping
 
-  PlumStateCallback* =
-    proc(state: PlumState, mapping: PlumMapping) {.callback.}
+  PlumStateCallback* = proc(state: PlumState, mapping: PlumMapping) {.callback.}
 
   MappingHandle = ref object
     signal: ThreadSignalPtr
@@ -76,9 +77,11 @@ type
 # libplum calls mappingCallback from its own C thread. Under refc, any thread
 # that touches Nim objects must register with the GC first.
 template foreignThreadGc(body: untyped) =
-  when declared(setupForeignThreadGc): setupForeignThreadGc()
+  when declared(setupForeignThreadGc):
+    setupForeignThreadGc()
   body
-  when declared(tearDownForeignThreadGc): tearDownForeignThreadGc()
+  when declared(tearDownForeignThreadGc):
+    tearDownForeignThreadGc()
 
 var activeMappingsLock: Lock
 var activeMappings {.guard: activeMappingsLock.}: Table[cint, MappingHandle]
@@ -92,8 +95,9 @@ template withSafeLock(body: untyped) =
     withLock activeMappingsLock:
       body
 
-proc mappingCallback(id: cint, state: plum_state_t,
-                     raw: ptr plum_mapping_t) {.cdecl, raises: [].} =
+proc mappingCallback(
+    id: cint, state: plum_state_t, raw: ptr plum_mapping_t
+) {.cdecl, raises: [].} =
   ## Called from libplum's internal C thread on SUCCESS, FAILURE, and DESTROYED.
 
   foreignThreadGc:
@@ -139,7 +143,7 @@ proc mappingCallback(id: cint, state: plum_state_t,
           mappingProtocol: MappingProtocol(raw[].mapping_protocol.int),
           internalPort: raw[].internal_port,
           externalPort: raw[].external_port,
-          externalHost: $cast[cstring](addr raw[].external_host)
+          externalHost: $cast[cstring](addr raw[].external_host),
         )
         handle.onStateChange(plumState, mapping)
 
@@ -147,7 +151,7 @@ proc init*(
     logLevel: plum_log_level_t = PLUM_LOG_LEVEL_NONE,
     discoverTimeout: int = 0,
     mappingTimeout: int = 0,
-    recheckPeriod: int = 0
+    recheckPeriod: int = 0,
 ): Result[void, string] {.raises: [].} =
   ## init MUST be called to setup internal plum thread (plum_init).
 
@@ -157,7 +161,7 @@ proc init*(
     dummytls_domain: nil,
     discover_timeout: discoverTimeout.cint,
     mapping_timeout: mappingTimeout.cint,
-    recheck_period: recheckPeriod.cint
+    recheck_period: recheckPeriod.cint,
   )
 
   let res = plum_init(addr config)
@@ -180,21 +184,18 @@ proc createMapping*(
     internalPort: uint16,
     externalPort: uint16 = 0,
     timeout: Duration = seconds(30),
-    onStateChange: PlumStateCallback = nil
+    onStateChange: PlumStateCallback = nil,
 ): Future[Result[MappingResult, string]] {.async: (raises: [CancelledError]).} =
   let signal = ThreadSignalPtr.new().valueOr:
     return err("plum: cannot create signal: " & $error)
 
-  let handle = MappingHandle(
-    signal: signal,
-    onStateChange: onStateChange
-  )
+  let handle = MappingHandle(signal: signal, onStateChange: onStateChange)
 
   var req = plum_mapping_t(
     protocol: plum_ip_protocol_t(protocol.int),
     internal_port: internalPort,
     external_port: externalPort,
-    user_ptr: cast[pointer](handle)
+    user_ptr: cast[pointer](handle),
   )
 
   # Avoid issue with refc.
@@ -252,7 +253,7 @@ proc createMapping*(
         mappingProtocol: h.resolvedMappingProtocol,
         internalPort: h.resolvedInternalPort,
         externalPort: h.resolvedExternalPort,
-        externalHost: $cast[cstring](unsafeAddr h.resolvedExternalHost)
+        externalHost: $cast[cstring](unsafeAddr h.resolvedExternalHost),
       )
 
   if resolvedState == Success:

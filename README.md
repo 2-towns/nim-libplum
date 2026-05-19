@@ -111,6 +111,14 @@ Three env vars control verbosity:
 TEST_VERBOSE=1 MINIUPNPD_VERBOSE=1 LIBPLUM_VERBOSE=1 nimble testIntegration
 ```
 
+## Development
+
+Format the code with [nph](https://github.com/arnetheduck/nph):
+
+```bash
+nimble format
+```
+
 ## License
 
 Licensed and distributed under either of

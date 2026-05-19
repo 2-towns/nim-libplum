@@ -1,0 +1,4 @@
+vendor/libplum/build/
+tests/test_plum
+nimcache/
+.git/
