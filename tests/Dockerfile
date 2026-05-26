@@ -49,12 +49,12 @@ RUN rm -rf vendor/libplum/build && \
 
 # Compile test binaries (protocol x memory manager)
 COPY tests/ tests/
-RUN nim c -d:miniupnp_protocol=pcp   --mm:orc  -o:tests/test_pcp_orc   tests/test_plum.nim && \
-    nim c -d:miniupnp_protocol=pcp   --mm:refc -o:tests/test_pcp_refc  tests/test_plum.nim && \
-    nim c -d:miniupnp_protocol=upnp  --mm:orc  -o:tests/test_upnp_orc  tests/test_plum.nim && \
-    nim c -d:miniupnp_protocol=upnp  --mm:refc -o:tests/test_upnp_refc tests/test_plum.nim && \
-    nim c -d:miniupnp_protocol=natpmp --mm:orc  -o:tests/test_natpmp_orc  tests/test_plum.nim && \
-    nim c -d:miniupnp_protocol=natpmp --mm:refc -o:tests/test_natpmp_refc tests/test_plum.nim
+RUN nim c -d:miniupnp_protocol=pcp   --mm:orc  --threads:on -o:tests/test_pcp_orc   tests/test_plum.nim && \
+    nim c -d:miniupnp_protocol=pcp   --mm:refc --threads:on -o:tests/test_pcp_refc  tests/test_plum.nim && \
+    nim c -d:miniupnp_protocol=upnp  --mm:orc  --threads:on -o:tests/test_upnp_orc  tests/test_plum.nim && \
+    nim c -d:miniupnp_protocol=upnp  --mm:refc --threads:on -o:tests/test_upnp_refc tests/test_plum.nim && \
+    nim c -d:miniupnp_protocol=natpmp --mm:orc  --threads:on -o:tests/test_natpmp_orc  tests/test_plum.nim && \
+    nim c -d:miniupnp_protocol=natpmp --mm:refc --threads:on -o:tests/test_natpmp_refc tests/test_plum.nim
 
 COPY tests/docker-entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
