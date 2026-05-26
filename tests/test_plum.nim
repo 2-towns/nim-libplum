@@ -7,7 +7,11 @@
 # those terms.
 
 import std/os
+import std/osproc
+import std/strutils
+import posix
 import unittest2
+import std/atomics
 import chronos
 import libplum/plum
 import libplum/libplum
@@ -36,59 +40,120 @@ suite "plum":
     check not hasMapping(999)
 
 const miniupnp_protocol {.strdefine.} = ""
+
 # The flag is passed by the Docker / Podman container.
-# natpmp: miniupnpd compiled without PCP — PCP probes time out and libplum
-# must fall back to NAT-PMP on its own (tests the silent-timeout fallback fix).
 when miniupnp_protocol != "":
-  const expectedMappingProtocol =
-    when miniupnp_protocol == "pcp":
-      PCP
-    elif miniupnp_protocol == "natpmp":
-      NatPmp
-    else:
-      UPnP
+  const
+    discoverMs = 2000
+    recheckMs = 500
+    upnpRestartMs = discoverMs + 2000
+    natpmpEpochMs = 3000
+    renewalPollMs = 100
+    renewalTimeoutMs = 10_000
+
+  let mappingTimeout = seconds(40)
+
+  let logLevel =
+    if getEnv("LIBPLUM_VERBOSE") == "1": PLUM_LOG_LEVEL_VERBOSE
+    else: PLUM_LOG_LEVEL_NONE
+
+  var gRenewed: Atomic[bool]
+
+  proc onMappingRenewal(state: PlumState, mapping: PlumMapping) {.cdecl, raises: [], gcsafe.} =
+    if state == Success:
+      gRenewed.store(true)
+
+  proc stopMiniupnpd(proto: string) =
+    let pidFile = "/tmp/plum-test/miniupnpd-" & proto & ".pid"
+    let pid = readFile(pidFile).strip().parseInt()
+
+    discard posix.kill(pid.Pid, SIGKILL)
+
+  proc waitRenewal(): bool =
+    for _ in 0 ..< (renewalTimeoutMs div renewalPollMs):
+      if gRenewed.load():
+        return true
+      sleep(renewalPollMs)
+    false
+
+  proc startMiniupnpd(proto: string) =
+    let pidFile = "/tmp/plum-test/miniupnpd-" & proto & ".pid"
+    let confFile = "/tmp/plum-test/miniupnpd-" & proto & ".conf"
+    let logFile = "/tmp/plum-test/miniupnpd-" & proto & ".log"
+    let binary =
+      if proto == "natpmp": "miniupnpd-natpmponly" else: "miniupnpd"
+
+    discard execShellCmd(
+      binary & " -d -f " & confFile & " >> " & logFile & " 2>&1 & echo $! > " & pidFile
+    )
 
   suite "plum - " & miniupnp_protocol & " using miniupnp":
     test "createMapping TCP and destroyMapping":
-      let logLevel =
-        if getEnv("LIBPLUM_VERBOSE") == "1":
-          PLUM_LOG_LEVEL_VERBOSE
-        else:
-          PLUM_LOG_LEVEL_NONE
-      check init(discoverTimeout = 15000, logLevel = logLevel).isOk()
+      require init(discoverTimeout = discoverMs, logLevel = logLevel).isOk()
+      defer: discard cleanup()
 
-      let r = waitFor createMapping(TCP, 8101, timeout = seconds(40))
-      check r.isOk()
-      if r.isOk():
-        let res = r.value
-        check res.mapping.externalPort > 0
-        check res.mapping.externalHost.len > 0
-        check res.mapping.mappingProtocol == expectedMappingProtocol
-        check hasMapping(res.id)
-        if getEnv("TEST_VERBOSE") == "1":
-          echo miniupnp_protocol & " TCP: " & res.mapping.externalHost & ":" &
-            $res.mapping.externalPort
-        destroyMapping(res.id)
+      let r = waitFor createMapping(TCP, 8101, timeout = mappingTimeout)
+      require r.isOk()
+      let res = r.value
+      defer: destroyMapping(res.id)
 
-      discard cleanup()
+      checkpoint miniupnp_protocol & " TCP: " & res.mapping.externalHost & ":" & $res.mapping.externalPort
+      check res.mapping.externalPort > 0
+      check res.mapping.externalHost.len > 0
+      check hasMapping(res.id)
+
+      when miniupnp_protocol == "upnp":
+        check res.mapping.mappingProtocol == UPnP
+      elif miniupnp_protocol == "natpmp":
+        check res.mapping.mappingProtocol == NatPmp
+      else:
+        check res.mapping.mappingProtocol == PCP
 
     test "createMapping UDP and destroying":
-      let logLevel =
-        if getEnv("LIBPLUM_VERBOSE") == "1":
-          PLUM_LOG_LEVEL_VERBOSE
-        else:
-          PLUM_LOG_LEVEL_NONE
-      check init(discoverTimeout = 2000, logLevel = logLevel).isOk()
+      require init(discoverTimeout = discoverMs, logLevel = logLevel).isOk()
+      defer: discard cleanup()
 
-      let r = waitFor createMapping(UDP, 8090, timeout = seconds(40))
-      check r.isOk()
-      if r.isOk():
-        let res = r.value
-        check res.mapping.externalPort > 0
-        check res.mapping.mappingProtocol == expectedMappingProtocol
-        if getEnv("TEST_VERBOSE") == "1":
-          echo miniupnp_protocol & " UDP: " & res.mapping.externalHost & ":" &
-            $res.mapping.externalPort
-        destroyMapping(res.id)
+      let r = waitFor createMapping(UDP, 8090, timeout = mappingTimeout)
+      require r.isOk()
 
-      discard cleanup()
+      let res = r.value
+      defer: destroyMapping(res.id)
+
+      checkpoint miniupnp_protocol & " UDP: " & res.mapping.externalHost & ":" & $res.mapping.externalPort
+      check res.mapping.externalPort > 0
+
+      when miniupnp_protocol == "upnp":
+        check res.mapping.mappingProtocol == UPnP
+      elif miniupnp_protocol == "natpmp":
+        check res.mapping.mappingProtocol == NatPmp
+      else:
+        check res.mapping.mappingProtocol == PCP
+
+    test "mapping is renewed after miniupnpd restart":
+      require init(
+        discoverTimeout = discoverMs, logLevel = logLevel,
+        recheckPeriod = recheckMs,
+      ).isOk()
+      defer: discard cleanup()
+
+      gRenewed.store(false)
+
+      let r = waitFor createMapping(
+        TCP, 8301, timeout = mappingTimeout, onStateChange = onMappingRenewal
+      )
+      require r.isOk()
+      let res = r.value
+      defer: destroyMapping(res.id)
+
+      when miniupnp_protocol == "natpmp":
+        # Let the server epoch advance so the restart is detectable
+        sleep(natpmpEpochMs)
+
+      stopMiniupnpd(miniupnp_protocol)
+
+      when miniupnp_protocol == "upnp":
+        sleep(upnpRestartMs)
+
+      startMiniupnpd(miniupnp_protocol)
+
+      check waitRenewal()
