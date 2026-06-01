@@ -206,7 +206,6 @@ proc createMapping*(
     user_ptr: cast[pointer](handle),
   )
 
-  # Avoid issue with refc.
   # Pin the handle to prevent GC: the C library holds a raw pointer to
   # it (user_ptr) and might use it until DESTROYED fires.
   GC_ref(handle)
@@ -234,7 +233,7 @@ proc createMapping*(
       discard plum_destroy_mapping(id)
     handle.releaseSignal()
 
-  # Reached only when completed = true (CancelledError skips this).
+  # Timeout path: the signal never fired within the deadline.
   if not completed:
     return err("plum: mapping " & $id & " timed out")
 
