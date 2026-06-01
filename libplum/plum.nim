@@ -119,9 +119,7 @@ template withSafeLock(body: untyped) =
     withLock activeMappingsLock:
       body
 
-proc mappingCallback(
-    id: cint, state: plum_state_t, raw: ptr plum_mapping_t
-) {.cdecl.} =
+proc mappingCallback(id: cint, state: plum_state_t, raw: ptr plum_mapping_t) {.cdecl.} =
   ## Called from libplum's internal C thread on SUCCESS, FAILURE, and DESTROYED.
 
   foreignThreadGc:

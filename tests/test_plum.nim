@@ -159,7 +159,9 @@ when miniupnp_protocol != "":
 
     test "mapping is renewed after miniupnpd restart":
       require init(
-        discoverTimeout = discoverMs.int32, logLevel = logLevel, recheckPeriod = recheckMs.int32
+        discoverTimeout = discoverMs.int32,
+        logLevel = logLevel,
+        recheckPeriod = recheckMs.int32,
       )
         .isOk()
       defer:
