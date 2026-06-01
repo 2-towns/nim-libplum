@@ -266,6 +266,10 @@ proc createMapping*(
 
 proc destroyMapping*(id: cint) {.raises: [].} =
   ## Must be called exactly once after a successful createMapping.
+  ## Safe to call again or on an unknown id
+  withSafeLock:
+    if id notin activeMappings:
+      return
   discard plum_destroy_mapping(id)
 
 proc hasMapping*(id: cint): bool {.raises: [].} =
