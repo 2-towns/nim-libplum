@@ -28,6 +28,8 @@ export results
 
 {.pragma: callback, cdecl, raises: [], gcsafe.}
 
+{.push raises: [].}
+
 type
   PlumProtocol* = enum
     TCP = PLUM_IP_PROTOCOL_TCP.int
@@ -97,7 +99,7 @@ var activeMappings {.guard: activeMappingsLock.}: Table[cint, MappingHandle]
 
 initLock(activeMappingsLock)
 
-proc releaseSignal(handle: MappingHandle) {.raises: [].} =
+proc releaseSignal(handle: MappingHandle) =
   if handle.signalReleases.fetchAdd(1) == 1:
     discard handle.signal.close()
 
@@ -110,7 +112,7 @@ template withSafeLock(body: untyped) =
 
 proc mappingCallback(
     id: cint, state: plum_state_t, raw: ptr plum_mapping_t
-) {.cdecl, raises: [].} =
+) {.cdecl.} =
   ## Called from libplum's internal C thread on SUCCESS, FAILURE, and DESTROYED.
 
   foreignThreadGc:
@@ -160,7 +162,7 @@ proc init*(
     discoverTimeout: int = 0,
     mappingTimeout: int = 0,
     recheckPeriod: int = 0,
-): Result[void, string] {.raises: [].} =
+): Result[void, string] =
   ## init MUST be called to setup internal plum thread (plum_init).
 
   var config = plum_config_t(
@@ -178,7 +180,7 @@ proc init*(
   else:
     err("plum_init failed: " & $res)
 
-proc cleanup*(): Result[void, string] {.raises: [].} =
+proc cleanup*(): Result[void, string] =
   ## cleanup MUST be called to stop the thread and clean the setup.
 
   let res = plum_cleanup()
@@ -252,7 +254,7 @@ proc createMapping*(
     discard plum_destroy_mapping(id)
     return err("plum: mapping " & $id & " failed")
 
-proc destroyMapping*(id: cint) {.raises: [].} =
+proc destroyMapping*(id: cint) =
   ## Must be called exactly once after a successful createMapping.
   ## Safe to call again or on an unknown id
   withSafeLock:
@@ -260,7 +262,7 @@ proc destroyMapping*(id: cint) {.raises: [].} =
       return
   discard plum_destroy_mapping(id)
 
-proc hasMapping*(id: cint): bool {.raises: [].} =
+proc hasMapping*(id: cint): bool =
   ## Returns true if the mapping exists and is not being destroyed.
   var st: plum_state_t
   if plum_query_mapping(id, addr st, nil) == PLUM_ERR_SUCCESS:
@@ -268,13 +270,13 @@ proc hasMapping*(id: cint): bool {.raises: [].} =
   else:
     false
 
-proc activeMappingCount*(): int {.raises: [].} =
+proc activeMappingCount*(): int =
   ## Number of mappings the wrapper still tracks. Drops to 0 once every
   ## mapping has fired DESTROYED. Mainly useful to detect handle leaks.
   withSafeLock:
     result = activeMappings.len
 
-proc getLocalAddress*(): Result[string, string] {.raises: [].} =
+proc getLocalAddress*(): Result[string, string] =
   var buf = newString(PLUM_MAX_ADDRESS_LEN)
   let res = plum_get_local_address(buf.cstring, buf.len.csize_t)
   if res >= 0:
@@ -282,3 +284,5 @@ proc getLocalAddress*(): Result[string, string] {.raises: [].} =
     ok(buf)
   else:
     err("plum_get_local_address failed: " & $res)
+
+{.pop.}

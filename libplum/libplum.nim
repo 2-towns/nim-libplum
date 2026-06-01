@@ -97,6 +97,8 @@ type
 
 # Import plum functions
 
+{.push raises: [].}
+
 proc plum_init*(
   config: ptr plum_config_t
 ): cint {.importc: "plum_init", header: "plum.h".}
@@ -118,3 +120,5 @@ proc plum_destroy_mapping*(
 proc plum_get_local_address*(
   buffer: cstring, size: csize_t
 ): cint {.importc: "plum_get_local_address", header: "plum.h".}
+
+{.pop.}
