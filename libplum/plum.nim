@@ -59,6 +59,9 @@ type
     mapping*: PlumMapping
 
   PlumStateCallback* = proc(state: PlumState, mapping: PlumMapping) {.callback.}
+    ## Invoked on mapping state changes after the initial result. Runs on
+    ## libplum's internal C thread, not the chronos loop: only touch
+    ## thread-safe state from it (e.g. Atomic), never chronos APIs.
 
   MappingHandle = ref object
     signal: ThreadSignalPtr

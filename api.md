@@ -98,13 +98,20 @@ Returns a `MappingResult` containing the mapping `id` (needed for `destroyMappin
 
 Returns an error if no NAT device is found, the mapping fails, or the timeout expires.
 
+> **Warning:** `onStateChange` runs on libplum's internal C thread, not the
+> chronos event loop. Do not call chronos APIs or touch non-thread-safe state
+> from it; restrict it to thread-safe operations (e.g. `Atomic`, a channel).
+
 ### destroyMapping
 
 ```nim
 proc destroyMapping*(id: cint)
 ```
 
-Removes a mapping. Must be called exactly once after a successful `createMapping`.
+Removes a mapping. Must be called exactly once after a successful `createMapping`,
+otherwise the mapping's internal handle is leaked for the lifetime of the process.
+Calling it again, or with an unknown `id`, is a safe no-op. `cleanup` also releases
+any mappings still active.
 
 ### hasMapping
 
