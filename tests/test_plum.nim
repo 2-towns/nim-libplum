@@ -73,7 +73,7 @@ when miniupnp_protocol != "":
   let mappingTimeout = seconds(40)
 
   let logLevel =
-    if getEnv("LIBPLUM_VERBOSE") == "1": PLUM_LOG_LEVEL_VERBOSE else: PLUM_LOG_LEVEL_NONE
+    if getEnv("LIBPLUM_VERBOSE") == "1": PlumLogLevel.Verbose else: PlumLogLevel.None
 
   var gRenewed: Atomic[bool]
 
@@ -108,7 +108,7 @@ when miniupnp_protocol != "":
 
   suite "plum - " & miniupnp_protocol & " using miniupnp":
     test "createMapping TCP and destroyMapping":
-      require init(discoverTimeout = discoverMs, logLevel = logLevel).isOk()
+      require init(discoverTimeout = discoverMs.int32, logLevel = logLevel).isOk()
       defer:
         discard cleanup()
 
@@ -135,7 +135,7 @@ when miniupnp_protocol != "":
       destroyMapping(res.id)
 
     test "createMapping UDP and destroying":
-      require init(discoverTimeout = discoverMs, logLevel = logLevel).isOk()
+      require init(discoverTimeout = discoverMs.int32, logLevel = logLevel).isOk()
       defer:
         discard cleanup()
 
@@ -159,7 +159,7 @@ when miniupnp_protocol != "":
 
     test "mapping is renewed after miniupnpd restart":
       require init(
-        discoverTimeout = discoverMs, logLevel = logLevel, recheckPeriod = recheckMs
+        discoverTimeout = discoverMs.int32, logLevel = logLevel, recheckPeriod = recheckMs.int32
       )
         .isOk()
       defer:
@@ -189,7 +189,7 @@ when miniupnp_protocol != "":
       check waitRenewal()
 
     test "cleanup releases active mappings":
-      require init(discoverTimeout = discoverMs, logLevel = logLevel).isOk()
+      require init(discoverTimeout = discoverMs.int32, logLevel = logLevel).isOk()
 
       let r = waitFor createMapping(TCP, 8401, timeout = mappingTimeout)
       require r.isOk()

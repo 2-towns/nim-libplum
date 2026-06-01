@@ -35,6 +35,15 @@ type
     TCP = PLUM_IP_PROTOCOL_TCP.int
     UDP = PLUM_IP_PROTOCOL_UDP.int
 
+  PlumLogLevel* {.pure.} = enum
+    Verbose = PLUM_LOG_LEVEL_VERBOSE.int
+    Debug = PLUM_LOG_LEVEL_DEBUG.int
+    Info = PLUM_LOG_LEVEL_INFO.int
+    Warn = PLUM_LOG_LEVEL_WARN.int
+    Error = PLUM_LOG_LEVEL_ERROR.int
+    Fatal = PLUM_LOG_LEVEL_FATAL.int
+    None = PLUM_LOG_LEVEL_NONE.int
+
   PlumState* = enum
     Destroyed = PLUM_STATE_DESTROYED.int
     Pending = PLUM_STATE_PENDING.int
@@ -158,15 +167,15 @@ proc mappingCallback(
         handle.onStateChange(plumState, mapping)
 
 proc init*(
-    logLevel: plum_log_level_t = PLUM_LOG_LEVEL_NONE,
-    discoverTimeout: int = 0,
-    mappingTimeout: int = 0,
-    recheckPeriod: int = 0,
+    logLevel: PlumLogLevel = PlumLogLevel.None,
+    discoverTimeout: int32 = 0,
+    mappingTimeout: int32 = 0,
+    recheckPeriod: int32 = 0,
 ): Result[void, string] =
   ## init MUST be called to setup internal plum thread (plum_init).
 
   var config = plum_config_t(
-    log_level: logLevel,
+    log_level: plum_log_level_t(logLevel.int),
     log_callback: nil,
     dummytls_domain: nil,
     discover_timeout: discoverTimeout.cint,
