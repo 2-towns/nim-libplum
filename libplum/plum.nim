@@ -77,8 +77,8 @@ type
     resolvedInternalPort: uint16
     resolvedExternalPort: uint16
     resolvedExternalHost: array[PLUM_MAX_HOST_LEN, char]
-    # Use abandoned pattern for memory freeing
-    abandoned: Atomic[bool]
+    # Refcount-like
+    signalReleases: Atomic[int]
     onStateChange: PlumStateCallback
 
 # libplum calls mappingCallback from its own C thread. Under refc, any thread
@@ -96,6 +96,10 @@ var activeMappingsLock: Lock
 var activeMappings {.guard: activeMappingsLock.}: Table[cint, MappingHandle]
 
 initLock(activeMappingsLock)
+
+proc releaseSignal(handle: MappingHandle) {.raises: [].} =
+  if handle.signalReleases.fetchAdd(1) == 1:
+    discard handle.signal.close()
 
 # We can be confident that the pattern is GC Safe using
 # a lock.
@@ -118,12 +122,7 @@ proc mappingCallback(
     if plumState == Destroyed:
       withSafeLock:
         activeMappings.del(id)
-      # The handle can be abandoned after a timeout during a
-      # mapping creation.
-      # In that case, destroy is called internally and the
-      # signal pointer can be closed.
-      if handle.abandoned.load():
-        discard handle.signal.close()
+      handle.releaseSignal()
       # Release the pin set in createMapping: the C library is done with the
       # raw pointer and will never call this callback again for this mapping.
       GC_unref(handle)
@@ -230,40 +229,23 @@ proc createMapping*(
     raise
   finally:
     if not completed:
-      # Timeout or cancellation: we cannot close the signal here because
-      # the C callback may fire later and call fireSync on it.
-      # Mark the handle as abandoned so the DESTROYED callback closes it.
-      # Access via activeMappings rather than the local `handle` ref,
-      # in order to make sure we have the valid reference.
-      withSafeLock:
-        let h = activeMappings.getOrDefault(id)
-        if not h.isNil:
-          h.abandoned.store(true)
+      # Timeout or cancellation: a late callback may still fireSync, so the
+      # mapping is torn down and the close is decided by releaseSignal.
       discard plum_destroy_mapping(id)
-    else:
-      # Signal fired normally, safe to close.
-      discard signal.close()
+    handle.releaseSignal()
 
   # Reached only when completed = true (CancelledError skips this).
   if not completed:
     return err("plum: mapping " & $id & " timed out")
 
-  # Read result via activeMappings rather than the local `handle` ref in
-  # order to make sure we have the valid reference.
-  var resolvedState: PlumState
-  var resolvedMapping: PlumMapping
-
-  withSafeLock:
-    let h = activeMappings.getOrDefault(id)
-    if not h.isNil:
-      resolvedState = h.resolvedState
-      resolvedMapping = PlumMapping(
-        protocol: h.resolvedProtocol,
-        mappingProtocol: h.resolvedMappingProtocol,
-        internalPort: h.resolvedInternalPort,
-        externalPort: h.resolvedExternalPort,
-        externalHost: $cast[cstring](unsafeAddr h.resolvedExternalHost),
-      )
+  let resolvedState = handle.resolvedState
+  let resolvedMapping = PlumMapping(
+    protocol: handle.resolvedProtocol,
+    mappingProtocol: handle.resolvedMappingProtocol,
+    internalPort: handle.resolvedInternalPort,
+    externalPort: handle.resolvedExternalPort,
+    externalHost: $cast[cstring](unsafeAddr handle.resolvedExternalHost),
+  )
 
   if resolvedState == Success:
     return ok(MappingResult(id: id, mapping: resolvedMapping))
