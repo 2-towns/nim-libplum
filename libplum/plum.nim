@@ -79,9 +79,11 @@ type
 template foreignThreadGc(body: untyped) =
   when declared(setupForeignThreadGc):
     setupForeignThreadGc()
-  body
-  when declared(tearDownForeignThreadGc):
-    tearDownForeignThreadGc()
+  try:
+    body
+  finally:
+    when declared(tearDownForeignThreadGc):
+      tearDownForeignThreadGc()
 
 var activeMappingsLock: Lock
 var activeMappings {.guard: activeMappingsLock.}: Table[cint, MappingHandle]
