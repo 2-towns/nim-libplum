@@ -52,6 +52,19 @@ suite "plum":
       let r = waitFor createMapping(TCP, 8101, timeout = milliseconds(50))
       check r.isErr()
 
+    test "cleanup while a createMapping is pending completes cleanly":
+      require init().isOk()
+      defer:
+        discard cleanup()
+
+      # No NAT device answers, so the mapping stays PENDING until we cleanup.
+      let fut = createMapping(TCP, 8501, timeout = milliseconds(200))
+      waitFor sleepAsync(50.milliseconds)
+      discard cleanup()
+      let r = waitFor fut
+      check r.isErr()
+      check activeMappingCount() == 0
+
   test "destroyMapping is a no-op on an unknown id":
     require init().isOk()
     defer:
