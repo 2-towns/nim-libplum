@@ -287,6 +287,12 @@ proc hasMapping*(id: cint): bool {.raises: [].} =
   else:
     false
 
+proc activeMappingCount*(): int {.raises: [].} =
+  ## Number of mappings the wrapper still tracks. Drops to 0 once every
+  ## mapping has fired DESTROYED. Mainly useful to detect handle leaks.
+  withSafeLock:
+    result = activeMappings.len
+
 proc getLocalAddress*(): Result[string, string] {.raises: [].} =
   var buf = newString(PLUM_MAX_ADDRESS_LEN)
   let res = plum_get_local_address(buf.cstring, buf.len.csize_t)
