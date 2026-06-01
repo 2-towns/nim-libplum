@@ -12,6 +12,10 @@ import chronos/threadsync
 import results
 import ./libplum
 
+# libplum declares some parameters as `const T*` in C (read-only pointer).
+# Nim has no equivalent, so the generated C code drops the `const`, causing
+# a type mismatch warning in GCC 15+. This pragma suppresses that warning
+# only in this translation unit and is valid for both C and C++.
 {.
   emit: """
 #ifdef __GNUC__
@@ -24,10 +28,21 @@ export results
 
 {.pragma: callback, cdecl, raises: [], gcsafe.}
 
+{.push raises: [].}
+
 type
   PlumProtocol* = enum
     TCP = PLUM_IP_PROTOCOL_TCP.int
     UDP = PLUM_IP_PROTOCOL_UDP.int
+
+  PlumLogLevel* {.pure.} = enum
+    Verbose = PLUM_LOG_LEVEL_VERBOSE.int
+    Debug = PLUM_LOG_LEVEL_DEBUG.int
+    Info = PLUM_LOG_LEVEL_INFO.int
+    Warn = PLUM_LOG_LEVEL_WARN.int
+    Error = PLUM_LOG_LEVEL_ERROR.int
+    Fatal = PLUM_LOG_LEVEL_FATAL.int
+    None = PLUM_LOG_LEVEL_NONE.int
 
   PlumState* = enum
     Destroyed = PLUM_STATE_DESTROYED.int
@@ -55,6 +70,9 @@ type
     mapping*: PlumMapping
 
   PlumStateCallback* = proc(state: PlumState, mapping: PlumMapping) {.callback.}
+    ## Invoked on mapping state changes after the initial result. Runs on
+    ## libplum's internal C thread, not the chronos loop: only touch
+    ## thread-safe state from it (e.g. Atomic), never chronos APIs.
 
   MappingHandle = ref object
     signal: ThreadSignalPtr
@@ -70,8 +88,8 @@ type
     resolvedInternalPort: uint16
     resolvedExternalPort: uint16
     resolvedExternalHost: array[PLUM_MAX_HOST_LEN, char]
-    # Use abandoned pattern for memory freeing
-    abandoned: Atomic[bool]
+    # Refcount-like
+    signalReleases: Atomic[int]
     onStateChange: PlumStateCallback
 
 # libplum calls mappingCallback from its own C thread. Under refc, any thread
@@ -79,14 +97,20 @@ type
 template foreignThreadGc(body: untyped) =
   when declared(setupForeignThreadGc):
     setupForeignThreadGc()
-  body
-  when declared(tearDownForeignThreadGc):
-    tearDownForeignThreadGc()
+  try:
+    body
+  finally:
+    when declared(tearDownForeignThreadGc):
+      tearDownForeignThreadGc()
 
 var activeMappingsLock: Lock
 var activeMappings {.guard: activeMappingsLock.}: Table[cint, MappingHandle]
 
 initLock(activeMappingsLock)
+
+proc releaseSignal(handle: MappingHandle) =
+  if handle.signalReleases.fetchAdd(1) == 1:
+    discard handle.signal.close()
 
 # We can be confident that the pattern is GC Safe using
 # a lock.
@@ -95,9 +119,7 @@ template withSafeLock(body: untyped) =
     withLock activeMappingsLock:
       body
 
-proc mappingCallback(
-    id: cint, state: plum_state_t, raw: ptr plum_mapping_t
-) {.cdecl, raises: [].} =
+proc mappingCallback(id: cint, state: plum_state_t, raw: ptr plum_mapping_t) {.cdecl.} =
   ## Called from libplum's internal C thread on SUCCESS, FAILURE, and DESTROYED.
 
   foreignThreadGc:
@@ -109,12 +131,7 @@ proc mappingCallback(
     if plumState == Destroyed:
       withSafeLock:
         activeMappings.del(id)
-      # The handle can be abandoned after a timeout during a
-      # mapping creation.
-      # In that case, destroy is called internally and the
-      # signal pointer can be closed.
-      if handle.abandoned.load():
-        discard handle.signal.close()
+      handle.releaseSignal()
       # Release the pin set in createMapping: the C library is done with the
       # raw pointer and will never call this callback again for this mapping.
       GC_unref(handle)
@@ -148,15 +165,15 @@ proc mappingCallback(
         handle.onStateChange(plumState, mapping)
 
 proc init*(
-    logLevel: plum_log_level_t = PLUM_LOG_LEVEL_NONE,
-    discoverTimeout: int = 0,
-    mappingTimeout: int = 0,
-    recheckPeriod: int = 0,
-): Result[void, string] {.raises: [].} =
+    logLevel: PlumLogLevel = PlumLogLevel.None,
+    discoverTimeout: int32 = 0,
+    mappingTimeout: int32 = 0,
+    recheckPeriod: int32 = 0,
+): Result[void, string] =
   ## init MUST be called to setup internal plum thread (plum_init).
 
   var config = plum_config_t(
-    log_level: logLevel,
+    log_level: plum_log_level_t(logLevel.int),
     log_callback: nil,
     dummytls_domain: nil,
     discover_timeout: discoverTimeout.cint,
@@ -170,7 +187,7 @@ proc init*(
   else:
     err("plum_init failed: " & $res)
 
-proc cleanup*(): Result[void, string] {.raises: [].} =
+proc cleanup*(): Result[void, string] =
   ## cleanup MUST be called to stop the thread and clean the setup.
 
   let res = plum_cleanup()
@@ -198,7 +215,6 @@ proc createMapping*(
     user_ptr: cast[pointer](handle),
   )
 
-  # Avoid issue with refc.
   # Pin the handle to prevent GC: the C library holds a raw pointer to
   # it (user_ptr) and might use it until DESTROYED fires.
   GC_ref(handle)
@@ -221,40 +237,23 @@ proc createMapping*(
     raise
   finally:
     if not completed:
-      # Timeout or cancellation: we cannot close the signal here because
-      # the C callback may fire later and call fireSync on it.
-      # Mark the handle as abandoned so the DESTROYED callback closes it.
-      # Access via activeMappings rather than the local `handle` ref,
-      # in order to make sure we have the valid reference.
-      withSafeLock:
-        let h = activeMappings.getOrDefault(id)
-        if not h.isNil:
-          h.abandoned.store(true)
+      # Timeout or cancellation: a late callback may still fireSync, so the
+      # mapping is torn down and the close is decided by releaseSignal.
       discard plum_destroy_mapping(id)
-    else:
-      # Signal fired normally, safe to close.
-      discard signal.close()
+    handle.releaseSignal()
 
-  # Reached only when completed = true (CancelledError skips this).
+  # Timeout path: the signal never fired within the deadline.
   if not completed:
     return err("plum: mapping " & $id & " timed out")
 
-  # Read result via activeMappings rather than the local `handle` ref in
-  # order to make sure we have the valid reference.
-  var resolvedState: PlumState
-  var resolvedMapping: PlumMapping
-
-  withSafeLock:
-    let h = activeMappings.getOrDefault(id)
-    if not h.isNil:
-      resolvedState = h.resolvedState
-      resolvedMapping = PlumMapping(
-        protocol: h.resolvedProtocol,
-        mappingProtocol: h.resolvedMappingProtocol,
-        internalPort: h.resolvedInternalPort,
-        externalPort: h.resolvedExternalPort,
-        externalHost: $cast[cstring](unsafeAddr h.resolvedExternalHost),
-      )
+  let resolvedState = handle.resolvedState
+  let resolvedMapping = PlumMapping(
+    protocol: handle.resolvedProtocol,
+    mappingProtocol: handle.resolvedMappingProtocol,
+    internalPort: handle.resolvedInternalPort,
+    externalPort: handle.resolvedExternalPort,
+    externalHost: $cast[cstring](unsafeAddr handle.resolvedExternalHost),
+  )
 
   if resolvedState == Success:
     return ok(MappingResult(id: id, mapping: resolvedMapping))
@@ -262,16 +261,29 @@ proc createMapping*(
     discard plum_destroy_mapping(id)
     return err("plum: mapping " & $id & " failed")
 
-proc destroyMapping*(id: cint) {.raises: [].} =
+proc destroyMapping*(id: cint) =
   ## Must be called exactly once after a successful createMapping.
+  ## Safe to call again or on an unknown id
+  withSafeLock:
+    if id notin activeMappings:
+      return
   discard plum_destroy_mapping(id)
 
-proc hasMapping*(id: cint): bool {.raises: [].} =
-  ## Returns true if the mapping exists and has not been destroyed yet.
-  withSafeLock:
-    result = id in activeMappings
+proc hasMapping*(id: cint): bool =
+  ## Returns true if the mapping exists and is not being destroyed.
+  var st: plum_state_t
+  if plum_query_mapping(id, addr st, nil) == PLUM_ERR_SUCCESS:
+    PlumState(st.int) notin {Destroying, Destroyed}
+  else:
+    false
 
-proc getLocalAddress*(): Result[string, string] {.raises: [].} =
+proc activeMappingCount*(): int =
+  ## Number of mappings the wrapper still tracks. Drops to 0 once every
+  ## mapping has fired DESTROYED. Mainly useful to detect handle leaks.
+  withSafeLock:
+    result = activeMappings.len
+
+proc getLocalAddress*(): Result[string, string] =
   var buf = newString(PLUM_MAX_ADDRESS_LEN)
   let res = plum_get_local_address(buf.cstring, buf.len.csize_t)
   if res >= 0:
@@ -279,3 +291,5 @@ proc getLocalAddress*(): Result[string, string] {.raises: [].} =
     ok(buf)
   else:
     err("plum_get_local_address failed: " & $res)
+
+{.pop.}

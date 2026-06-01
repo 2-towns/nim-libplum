@@ -16,6 +16,8 @@ import chronos
 import libplum/plum
 import libplum/libplum
 
+const miniupnp_protocol {.strdefine.} = ""
+
 suite "plum":
   test "init and cleanup":
     let r = init()
@@ -39,7 +41,37 @@ suite "plum":
   test "hasMapping returns false for unknown id":
     check not hasMapping(999)
 
-const miniupnp_protocol {.strdefine.} = ""
+  # Only valid where no NAT device answers; the integration container runs
+  # miniupnpd, which would make the mapping succeed before the timeout.
+  when miniupnp_protocol == "":
+    test "createMapping times out without a NAT device":
+      require init().isOk()
+      defer:
+        discard cleanup()
+
+      let r = waitFor createMapping(TCP, 8101, timeout = milliseconds(50))
+      check r.isErr()
+
+    test "cleanup while a createMapping is pending completes cleanly":
+      require init().isOk()
+      defer:
+        discard cleanup()
+
+      # No NAT device answers, so the mapping stays PENDING until we cleanup.
+      let fut = createMapping(TCP, 8501, timeout = milliseconds(200))
+      waitFor sleepAsync(50.milliseconds)
+      discard cleanup()
+      let r = waitFor fut
+      check r.isErr()
+      check activeMappingCount() == 0
+
+  test "destroyMapping is a no-op on an unknown id":
+    require init().isOk()
+    defer:
+      discard cleanup()
+
+    destroyMapping(999.cint)
+    check not hasMapping(999)
 
 # The flag is passed by the Docker / Podman container.
 when miniupnp_protocol != "":
@@ -54,7 +86,7 @@ when miniupnp_protocol != "":
   let mappingTimeout = seconds(40)
 
   let logLevel =
-    if getEnv("LIBPLUM_VERBOSE") == "1": PLUM_LOG_LEVEL_VERBOSE else: PLUM_LOG_LEVEL_NONE
+    if getEnv("LIBPLUM_VERBOSE") == "1": PlumLogLevel.Verbose else: PlumLogLevel.None
 
   var gRenewed: Atomic[bool]
 
@@ -89,15 +121,13 @@ when miniupnp_protocol != "":
 
   suite "plum - " & miniupnp_protocol & " using miniupnp":
     test "createMapping TCP and destroyMapping":
-      require init(discoverTimeout = discoverMs, logLevel = logLevel).isOk()
+      require init(discoverTimeout = discoverMs.int32, logLevel = logLevel).isOk()
       defer:
         discard cleanup()
 
       let r = waitFor createMapping(TCP, 8101, timeout = mappingTimeout)
       require r.isOk()
       let res = r.value
-      defer:
-        destroyMapping(res.id)
 
       checkpoint miniupnp_protocol & " TCP: " & res.mapping.externalHost & ":" &
         $res.mapping.externalPort
@@ -112,8 +142,13 @@ when miniupnp_protocol != "":
       else:
         check res.mapping.mappingProtocol == PCP
 
+      destroyMapping(res.id)
+      check not hasMapping(res.id)
+      # second destroy on a real id must be a safe no-op
+      destroyMapping(res.id)
+
     test "createMapping UDP and destroying":
-      require init(discoverTimeout = discoverMs, logLevel = logLevel).isOk()
+      require init(discoverTimeout = discoverMs.int32, logLevel = logLevel).isOk()
       defer:
         discard cleanup()
 
@@ -137,7 +172,9 @@ when miniupnp_protocol != "":
 
     test "mapping is renewed after miniupnpd restart":
       require init(
-        discoverTimeout = discoverMs, logLevel = logLevel, recheckPeriod = recheckMs
+        discoverTimeout = discoverMs.int32,
+        logLevel = logLevel,
+        recheckPeriod = recheckMs.int32,
       )
         .isOk()
       defer:
@@ -165,3 +202,13 @@ when miniupnp_protocol != "":
       startMiniupnpd(miniupnp_protocol)
 
       check waitRenewal()
+
+    test "cleanup releases active mappings":
+      require init(discoverTimeout = discoverMs.int32, logLevel = logLevel).isOk()
+
+      let r = waitFor createMapping(TCP, 8401, timeout = mappingTimeout)
+      require r.isOk()
+
+      # no destroyMapping on purpose: cleanup must release everything
+      check cleanup().isOk()
+      check activeMappingCount() == 0
