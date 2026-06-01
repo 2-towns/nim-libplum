@@ -12,6 +12,10 @@ import chronos/threadsync
 import results
 import ./libplum
 
+# libplum declares some parameters as `const T*` in C (read-only pointer).
+# Nim has no equivalent, so the generated C code drops the `const`, causing
+# a type mismatch warning in GCC 15+. This pragma suppresses that warning
+# only in this translation unit and is valid for both C and C++.
 {.
   emit: """
 #ifdef __GNUC__

@@ -15,17 +15,6 @@ const
   libraryPath = libplumPath & "/libplum.a"
 {.passc: "-I" & includePath & " -DPLUM_STATIC".}
 {.passl: libraryPath.}
-# libplum declares some parameters as `const T*` in C (read-only pointer).
-# Nim has no equivalent, so the generated C code drops the `const`, causing
-# a type mismatch warning in GCC 15+. This pragma suppresses that warning
-# only in this translation unit and is valid for both C and C++.
-{.
-  emit: """
-#ifdef __GNUC__
-#pragma GCC diagnostic ignored "-Wno-incompatible-pointer-types"
-#endif
-"""
-.}
 
 when defined(windows):
   {.passl: "-lws2_32 -liphlpapi -lbcrypt".}
