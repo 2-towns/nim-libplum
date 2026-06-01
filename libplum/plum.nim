@@ -280,9 +280,12 @@ proc destroyMapping*(id: cint) {.raises: [].} =
   discard plum_destroy_mapping(id)
 
 proc hasMapping*(id: cint): bool {.raises: [].} =
-  ## Returns true if the mapping exists and has not been destroyed yet.
-  withSafeLock:
-    result = id in activeMappings
+  ## Returns true if the mapping exists and is not being destroyed.
+  var st: plum_state_t
+  if plum_query_mapping(id, addr st, nil) == PLUM_ERR_SUCCESS:
+    PlumState(st.int) notin {Destroying, Destroyed}
+  else:
+    false
 
 proc getLocalAddress*(): Result[string, string] {.raises: [].} =
   var buf = newString(PLUM_MAX_ADDRESS_LEN)
