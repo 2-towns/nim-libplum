@@ -102,7 +102,7 @@ template foreignThreadGc(body: untyped) =
       tearDownForeignThreadGc()
 
 # Keep a counter for convenience for testing
-# and exposed as an API over getActiveMappingCount()
+# and exposed as an API over activeMappingCount()
 var activeMappings: Atomic[int]
 
 proc mappingCallback(id: cint, state: plum_state_t, raw: ptr plum_mapping_t) {.cdecl.} =
