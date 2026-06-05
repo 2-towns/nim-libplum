@@ -6,7 +6,7 @@
 # This file may not be copied, modified, or distributed except according to
 # those terms.
 
-import std/[atomics, locks, tables]
+import std/atomics
 import chronos
 import chronos/threadsync
 import results
@@ -101,17 +101,9 @@ template foreignThreadGc(body: untyped) =
     when declared(tearDownForeignThreadGc):
       tearDownForeignThreadGc()
 
-var activeMappingsLock: Lock
-var activeMappings {.guard: activeMappingsLock.}: Table[cint, MappingHandle]
-
-initLock(activeMappingsLock)
-
-# We can be confident that the pattern is GC Safe using
-# a lock.
-template withSafeLock(body: untyped) =
-  {.cast(gcsafe).}:
-    withLock activeMappingsLock:
-      body
+# Keep a counter for convenience for testing
+# and exposed as an API over activeMappingCount()
+var activeMappings: Atomic[int]
 
 proc mappingCallback(id: cint, state: plum_state_t, raw: ptr plum_mapping_t) {.cdecl.} =
   ## Called from libplum's internal C thread on SUCCESS, FAILURE, and DESTROYED.
@@ -123,8 +115,7 @@ proc mappingCallback(id: cint, state: plum_state_t, raw: ptr plum_mapping_t) {.c
 
     let plumState = PlumState(state.int)
     if plumState == Destroyed:
-      withSafeLock:
-        activeMappings.del(id)
+      discard activeMappings.fetchSub(1)
 
       if not handle.resolved.exchange(true):
         # Set Destroyed state and fire the signal to notify any waiting threads.
@@ -235,8 +226,7 @@ proc createMapping*(
     discard signal.close()
     return err("plum_create_mapping failed: " & $id)
 
-  withSafeLock:
-    activeMappings[id] = handle
+  discard activeMappings.fetchAdd(1)
 
   var completed = false
   try:
@@ -290,9 +280,8 @@ proc hasMapping*(id: cint): bool =
 
 proc activeMappingCount*(): int =
   ## Number of mappings the wrapper still tracks. Drops to 0 once every
-  ## mapping has fired DESTROYED. Mainly useful to detect handle leaks.
-  withSafeLock:
-    result = activeMappings.len
+  ## mapping has fired DESTROYED.
+  activeMappings.load()
 
 proc getLocalAddress*(): Result[string, string] =
   var buf = newString(PLUM_MAX_ADDRESS_LEN)
