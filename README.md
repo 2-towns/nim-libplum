@@ -121,6 +121,14 @@ Format the code with [nph](https://github.com/arnetheduck/nph):
 nimble format
 ```
 
+### Updating the libplum submodule
+
+The async wrapper relies on a libplum behavior verified in `vendor/libplum/src/client.c`:
+the DESTROYED callback fires exactly once for every created mapping, either on explicit
+destroy or during `plum_cleanup` (synchronously, before it returns). `createMapping`
+waits for this callback to safely reclaim its internal signal. When bumping the
+submodule, re-check that this still holds.
+
 ## License
 
 Licensed and distributed under either of

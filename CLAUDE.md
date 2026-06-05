@@ -26,9 +26,15 @@ Debug env vars: `LIBPLUM_VERBOSE=1`, `TEST_VERBOSE=1`, `MINIUPNPD_VERBOSE=1`.
 
 - `mappingCallback` runs on libplum's internal C thread, wrapped in
   `foreignThreadGc`; it must stay `raises: []` and only touch thread-safe state
-- Never call `ThreadSignalPtr.close()` from the C thread: close() unregisters
-  the fd from the *calling* thread's dispatcher; only the chronos loop thread
-  may close a signal
+- The mapping signal fires exactly once (first of SUCCESS/FAILURE/DESTROYED
+  via `resolved.exchange`); `createMapping` owns it and closes it on the
+  chronos loop thread after consuming that fire. Never call
+  `ThreadSignalPtr.close()` from the C thread: close() unregisters the fd
+  from the *calling* thread's dispatcher
 - `MappingHandle` is pinned with `GC_ref` while libplum holds `user_ptr`;
   unpinned only in the DESTROYED callback
 - `activeMappings` is guarded by `activeMappingsLock` (`withSafeLock`)
+- The wrapper relies on a libplum guarantee: DESTROYED fires exactly once for
+  every created mapping (explicit destroy, or `destroy_all_mappings` during
+  `plum_cleanup`, synchronously before it returns), verified in
+  `vendor/libplum/src/client.c`. Re-verify this when bumping the submodule
