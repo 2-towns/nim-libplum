@@ -274,11 +274,10 @@ proc createMapping*(
     return err("plum: mapping " & $id & " failed")
 
 proc destroyMapping*(id: cint) =
-  ## Must be called exactly once after a successful createMapping.
-  ## Safe to call again or on an unknown id
-  withSafeLock:
-    if id notin activeMappings:
-      return
+  ## Releases a mapping created by createMapping. Safe to call again or
+  ## with an unknown id.
+  # libplum locks internally and ignores unknown ids: no wrapper-side
+  # bookkeeping needed.
   discard plum_destroy_mapping(id)
 
 proc hasMapping*(id: cint): bool =

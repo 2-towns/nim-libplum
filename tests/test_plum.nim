@@ -14,7 +14,6 @@ import unittest2
 import std/atomics
 import chronos
 import libplum/plum
-import libplum/libplum
 
 const miniupnp_protocol {.strdefine.} = ""
 

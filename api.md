@@ -108,10 +108,10 @@ Returns an error if no NAT device is found, the mapping fails, or the timeout ex
 proc destroyMapping*(id: cint)
 ```
 
-Removes a mapping. Must be called exactly once after a successful `createMapping`,
-otherwise the mapping's internal handle is leaked for the lifetime of the process.
-Calling it again, or with an unknown `id`, is a safe no-op. `cleanup` also releases
-any mappings still active.
+Removes a mapping. Call it after a successful `createMapping`, otherwise the
+mapping's internal handle is leaked for the lifetime of the process. Calling it
+again, or with an unknown `id`, is a safe no-op. `cleanup` also releases any
+mappings still active.
 
 ### hasMapping
 
