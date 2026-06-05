@@ -33,7 +33,8 @@ Debug env vars: `LIBPLUM_VERBOSE=1`, `TEST_VERBOSE=1`, `MINIUPNPD_VERBOSE=1`.
   from the *calling* thread's dispatcher
 - `MappingHandle` is pinned with `GC_ref` while libplum holds `user_ptr`;
   unpinned only in the DESTROYED callback
-- `activeMappings` is guarded by `activeMappingsLock` (`withSafeLock`)
+- `activeMappings` is an `Atomic[int]` counting pinned handles; libplum is the source of truth for mapping state
+  (`hasMapping`)
 - The wrapper relies on a libplum guarantee: DESTROYED fires exactly once for
   every created mapping (explicit destroy, or `destroy_all_mappings` during
   `plum_cleanup`, synchronously before it returns), verified in

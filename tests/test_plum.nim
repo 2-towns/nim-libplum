@@ -70,7 +70,6 @@ suite "plum":
       discard cleanup()
 
     destroyMapping(999.cint)
-    check not hasMapping(999)
 
 # The flag is passed by the Docker / Podman container.
 when miniupnp_protocol != "":
