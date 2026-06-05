@@ -125,9 +125,12 @@ proc mappingCallback(id: cint, state: plum_state_t, raw: ptr plum_mapping_t) {.c
     if plumState == Destroyed:
       withSafeLock:
         activeMappings.del(id)
-      # Do not close the signal here: close() unregisters the fd from the
-      # calling thread's dispatcher, and this is libplum's C thread, not the
-      # chronos loop. createMapping decides what happens to the signal.
+
+      if not handle.resolved.exchange(true):
+        # Set Destroyed state and fire the signal to notify any waiting threads.
+        handle.resolvedState = Destroyed
+        discard handle.signal.fireSync()
+
       # Release the pin set in createMapping: the C library is done with the
       # raw pointer and will never call this callback again for this mapping.
       GC_unref(handle)
@@ -192,6 +195,17 @@ proc cleanup*(): Result[void, string] =
   else:
     err("plum_cleanup failed: " & $res)
 
+const destroyConfirmTimeout = seconds(5)
+
+proc destroyAndReclaim(id: cint, signal: ThreadSignalPtr) {.async: (raises: []).} =
+  ## Tear the mapping down and close its signal once DESTROYED confirms
+  ## (the signal fires exactly once, see mappingCallback). If libplum never
+  ## confirms in time, leak the signal rather than closing it while the C
+  ## thread may still fire it.
+  discard plum_destroy_mapping(id)
+  if await noCancel withTimeout(signal.wait(), destroyConfirmTimeout):
+    discard signal.close()
+
 proc createMapping*(
     protocol: PlumProtocol,
     internalPort: uint16,
@@ -226,25 +240,21 @@ proc createMapping*(
 
   var completed = false
   try:
-    # Wait for the callback to fireSync
+    # Wait for the signal's single fire (in mappingCallback)
     completed = await withTimeout(signal.wait(), timeout)
   except CancelledError:
-    # CancelledError skips the lines below and propagates after finally.
+    # The signal was cancelled so it is safe to destroy and reclaim.
+    await destroyAndReclaim(id, signal)
     raise
-  finally:
-    if completed:
-      # The signal fired (once, see mappingCallback) and was consumed:
-      # nobody will touch it again, safe to close here on the loop thread.
-      discard signal.close()
-    else:
-      # Timeout or cancellation: a late callback may still fireSync, so
-      # closing the signal is unsafe (here or from the C thread). We
-      # deliberately leak one eventfd instead.
-      discard plum_destroy_mapping(id)
 
-  # Timeout path: the signal never fired within the deadline.
   if not completed:
+    # The signal was not fired so it is safe to destroy and reclaim.
+    await destroyAndReclaim(id, signal)
     return err("plum: mapping " & $id & " timed out")
+
+  # The signal fired and was consumed: nobody will touch it again,
+  # safe to close here.
+  discard signal.close()
 
   let resolvedState = handle.resolvedState
   let resolvedMapping = PlumMapping(
@@ -257,6 +267,8 @@ proc createMapping*(
 
   if resolvedState == Success:
     return ok(MappingResult(id: id, mapping: resolvedMapping))
+  elif resolvedState == Destroyed:
+    return err("plum: mapping " & $id & " destroyed before completion")
   else:
     discard plum_destroy_mapping(id)
     return err("plum: mapping " & $id & " failed")
