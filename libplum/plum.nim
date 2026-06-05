@@ -88,8 +88,6 @@ type
     resolvedInternalPort: uint16
     resolvedExternalPort: uint16
     resolvedExternalHost: array[PLUM_MAX_HOST_LEN, char]
-    # Refcount-like
-    signalReleases: Atomic[int]
     onStateChange: PlumStateCallback
 
 # libplum calls mappingCallback from its own C thread. Under refc, any thread
@@ -107,10 +105,6 @@ var activeMappingsLock: Lock
 var activeMappings {.guard: activeMappingsLock.}: Table[cint, MappingHandle]
 
 initLock(activeMappingsLock)
-
-proc releaseSignal(handle: MappingHandle) =
-  if handle.signalReleases.fetchAdd(1) == 1:
-    discard handle.signal.close()
 
 # We can be confident that the pattern is GC Safe using
 # a lock.
@@ -131,7 +125,9 @@ proc mappingCallback(id: cint, state: plum_state_t, raw: ptr plum_mapping_t) {.c
     if plumState == Destroyed:
       withSafeLock:
         activeMappings.del(id)
-      handle.releaseSignal()
+      # Do not close the signal here: close() unregisters the fd from the
+      # calling thread's dispatcher, and this is libplum's C thread, not the
+      # chronos loop. createMapping decides what happens to the signal.
       # Release the pin set in createMapping: the C library is done with the
       # raw pointer and will never call this callback again for this mapping.
       GC_unref(handle)
@@ -236,11 +232,15 @@ proc createMapping*(
     # CancelledError skips the lines below and propagates after finally.
     raise
   finally:
-    if not completed:
-      # Timeout or cancellation: a late callback may still fireSync, so the
-      # mapping is torn down and the close is decided by releaseSignal.
+    if completed:
+      # The signal fired (once, see mappingCallback) and was consumed:
+      # nobody will touch it again, safe to close here on the loop thread.
+      discard signal.close()
+    else:
+      # Timeout or cancellation: a late callback may still fireSync, so
+      # closing the signal is unsafe (here or from the C thread). We
+      # deliberately leak one eventfd instead.
       discard plum_destroy_mapping(id)
-    handle.releaseSignal()
 
   # Timeout path: the signal never fired within the deadline.
   if not completed:
