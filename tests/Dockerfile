@@ -4,7 +4,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     cmake make \
     libc-dev \
     iproute2 \
-    && rm -rf /var/lib/apt/lists/*
+    && apt-get dist-clean
 
 # Build miniupnpd with stub redirector: no iptables/nftables needed, always
 # returns success for port mapping requests — safe for isolated test containers.
