@@ -1,4 +1,4 @@
-FROM ubuntu:24.04
+FROM nimlang/nim:latest
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     cmake gcc make git curl ca-certificates xz-utils \
