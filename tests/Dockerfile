@@ -39,13 +39,7 @@ COPY vendor/ vendor/
 RUN nimble setup -y
 
 # Build libplum static library
-RUN rm -rf vendor/libplum/build && \
-    cmake -B vendor/libplum/build \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DBUILD_SHARED_LIBS=OFF \
-    vendor/libplum && \
-    cmake --build vendor/libplum/build && \
-    cp vendor/libplum/build/libplum.a vendor/libplum/libplum.a
+RUN nimble buildBundledLibs
 
 # Compile test binaries (protocol x memory manager)
 COPY tests/ tests/
