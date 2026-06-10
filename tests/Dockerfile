@@ -24,13 +24,6 @@ RUN git clone --depth=1 --branch miniupnpd_2_3_9 \
     && install -m 755 miniupnpd /usr/local/sbin/miniupnpd-natpmponly \
     && rm -rf /tmp/miniupnp /tmp/stub_rdr.c
 
-# Install Nim
-ARG NIM_VERSION=2.2.10
-RUN curl -fsSL "https://nim-lang.org/download/nim-${NIM_VERSION}-linux_x64.tar.xz" \
-    | tar -xJ -C /opt && \
-    ln -s "/opt/nim-${NIM_VERSION}/bin/nim" /usr/local/bin/nim && \
-    ln -s "/opt/nim-${NIM_VERSION}/bin/nimble" /usr/local/bin/nimble
-
 # Install nim deps (cached layer)
 WORKDIR /app
 COPY libplum.nimble .
