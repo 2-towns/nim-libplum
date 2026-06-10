@@ -1,7 +1,7 @@
 FROM ubuntu:24.04
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    cmake gcc make git curl ca-certificates xz-utils \
+    gcc make git curl ca-certificates xz-utils \
     libc-dev \
     iproute2 \
     && rm -rf /var/lib/apt/lists/*
