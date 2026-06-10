@@ -1,3 +1,5 @@
+import std/[os, strutils]
+
 mode = ScriptMode.Verbose
 
 packageName   = "libplum"
@@ -14,10 +16,23 @@ requires "nim >= 1.6.0",
          "unittest2"
 
 proc compileStaticLibraries() =
+  let
+    cflags = "-std=c11 -O2 -pthread -fPIC -fvisibility=hidden -DPLUM_EXPORTS -DPLUM_STATIC -DRELEASE=1 -D_GNU_SOURCE"
+    includes = "-Iinclude/plum -Isrc"
+
   withDir "vendor/libplum":
-    exec("cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF")
-    exec("cmake --build build")
-    cpFile("build/libplum.a", "libplum.a")
+    let winFlags =
+      if defined(windows): " -DWIN32_LEAN_AND_MEAN"
+        else: ""
+    var oFiles: seq[string]
+
+    for srcFile in listFiles("src"):
+      if srcFile.endsWith(".c"):
+        let oFile = srcFile.changeFileExt("o")
+        exec "gcc " & cflags & winFlags & " " & includes & " -c " & srcFile & " -o " & oFile
+        oFiles.add(oFile)
+
+    exec "ar rcs libplum.a " & oFiles.join(" ")
 
 task format, "format Nim code using nph":
   exec "nph libplum/ tests/"
