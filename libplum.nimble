@@ -1,5 +1,3 @@
-import std/[os, strutils]
-
 mode = ScriptMode.Verbose
 
 packageName   = "libplum"
@@ -15,33 +13,10 @@ requires "nim >= 1.6.0",
          "chronos >= 4.2.0 & < 5.0.0",
          "unittest2"
 
-proc compileStaticLibraries() =
-  let
-    cflags = "-std=c11 -O2 -pthread -fPIC -fvisibility=hidden -DPLUM_EXPORTS -DPLUM_STATIC -DRELEASE=1 -D_GNU_SOURCE"
-    includes = "-Iinclude/plum -Isrc"
-
-  withDir "vendor/libplum":
-    let winFlags =
-      if defined(windows): " -DWIN32_LEAN_AND_MEAN"
-        else: ""
-    var oFiles: seq[string]
-
-    for srcFile in listFiles("src"):
-      if srcFile.endsWith(".c"):
-        let oFile = srcFile.changeFileExt("o")
-        exec "gcc " & cflags & winFlags & " " & includes & " -c " & srcFile & " -o " & oFile
-        oFiles.add(oFile)
-
-    exec "ar rcs libplum.a " & oFiles.join(" ")
-
 task format, "format Nim code using nph":
   exec "nph libplum/ tests/"
 
-task buildBundledLibs, "build bundled libraries":
-  compileStaticLibraries()
-
 task test, "run tests":
-  compileStaticLibraries()
   exec("nimble setup")
   exec("nim c -o:tests/test_plum tests/test_plum.nim")
   exec("./tests/test_plum")
@@ -55,6 +30,3 @@ task testIntegration, "run miniupnpd integration tests in Docker / Podman":
   exec(docker & " run --rm --cap-add=NET_ADMIN -e TEST_MINIUPNP_PCP=1" & flags & " " & packageName)
   exec(docker & " run --rm --cap-add=NET_ADMIN -e TEST_MINIUPNP_UPNP=1" & flags & " " & packageName)
   exec(docker & " run --rm --cap-add=NET_ADMIN -e TEST_MINIUPNP_NATPMP=1" & flags & " " & packageName)
-
-before install:
-  compileStaticLibraries()

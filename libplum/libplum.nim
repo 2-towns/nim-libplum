@@ -12,14 +12,33 @@ const
   rootPath = currentSourcePath.parentDir().parentDir().replace('\\', '/')
   libplumPath = rootPath & "/vendor/libplum"
   includePath = libplumPath & "/include/plum"
-  libraryPath = libplumPath & "/libplum.a"
-{.passc: "-I" & includePath & " -DPLUM_STATIC".}
-{.passl: libraryPath.}
+  srcPath = libplumPath & "/src"
+
+{.passc: "-I" & quoteShell(includePath) & " -I" & quoteShell(srcPath) &
+  " -DPLUM_STATIC -DPLUM_EXPORTS -DRELEASE=1 -D_GNU_SOURCE".}
 
 when defined(windows):
+  {.passc: "-DWIN32_LEAN_AND_MEAN".}
   {.passl: "-lws2_32 -liphlpapi -lbcrypt".}
 else:
   {.passl: "-lpthread".}
+
+{.compile: srcPath & "/addr.c".}
+{.compile: srcPath & "/client.c".}
+{.compile: srcPath & "/dummytls.c".}
+{.compile: srcPath & "/http.c".}
+{.compile: srcPath & "/log.c".}
+{.compile: srcPath & "/natpmp.c".}
+{.compile: srcPath & "/net.c".}
+{.compile: srcPath & "/noprotocol.c".}
+{.compile: srcPath & "/pcp.c".}
+{.compile: srcPath & "/plum.c".}
+{.compile: srcPath & "/random.c".}
+{.compile: srcPath & "/tcp.c".}
+{.compile: srcPath & "/timestamp.c".}
+{.compile: srcPath & "/udp.c".}
+{.compile: srcPath & "/upnp.c".}
+{.compile: srcPath & "/util.c".}
 
 const
   PLUM_ERR_SUCCESS* = cint(0)
