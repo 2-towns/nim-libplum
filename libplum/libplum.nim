@@ -6,7 +6,7 @@
 # This file may not be copied, modified, or distributed except according to
 # those terms.
 
-import std/[os, strutils]
+import std/[os, sequtils, strutils]
 
 const
   rootPath = currentSourcePath.parentDir().parentDir().replace('\\', '/')
@@ -14,31 +14,39 @@ const
   includePath = libplumPath & "/include/plum"
   srcPath = libplumPath & "/src"
 
-{.passc: "-I" & quoteShell(includePath) & " -I" & quoteShell(srcPath) &
-  " -DPLUM_STATIC -DPLUM_EXPORTS -DRELEASE=1 -D_GNU_SOURCE".}
+  includes = @["-I" & includePath, "-I" & srcPath]
+
+  defs = @["-DPLUM_STATIC", "-DPLUM_EXPORTS", "-DRELEASE=1", "-D_GNU_SOURCE"]
+
+  pdefs =
+    when defined(windows):
+      @["-DWIN32_LEAN_AND_MEAN"]
+    else:
+      @[]
+
+  flags* = (includes & defs & pdefs).mapIt(it.quoteShell()).join(" ")
 
 when defined(windows):
-  {.passc: "-DWIN32_LEAN_AND_MEAN".}
   {.passl: "-lws2_32 -liphlpapi -lbcrypt".}
 else:
   {.passl: "-lpthread".}
 
-{.compile: srcPath & "/addr.c".}
-{.compile: srcPath & "/client.c".}
-{.compile: srcPath & "/dummytls.c".}
-{.compile: srcPath & "/http.c".}
-{.compile: srcPath & "/log.c".}
-{.compile: srcPath & "/natpmp.c".}
-{.compile: srcPath & "/net.c".}
-{.compile: srcPath & "/noprotocol.c".}
-{.compile: srcPath & "/pcp.c".}
-{.compile: srcPath & "/plum.c".}
-{.compile: srcPath & "/random.c".}
-{.compile: srcPath & "/tcp.c".}
-{.compile: srcPath & "/timestamp.c".}
-{.compile: srcPath & "/udp.c".}
-{.compile: srcPath & "/upnp.c".}
-{.compile: srcPath & "/util.c".}
+{.compile(srcPath & "/addr.c", flags).}
+{.compile(srcPath & "/client.c", flags).}
+{.compile(srcPath & "/dummytls.c", flags).}
+{.compile(srcPath & "/http.c", flags).}
+{.compile(srcPath & "/log.c", flags).}
+{.compile(srcPath & "/natpmp.c", flags).}
+{.compile(srcPath & "/net.c", flags).}
+{.compile(srcPath & "/noprotocol.c", flags).}
+{.compile(srcPath & "/pcp.c", flags).}
+{.compile(srcPath & "/plum.c", flags).}
+{.compile(srcPath & "/random.c", flags).}
+{.compile(srcPath & "/tcp.c", flags).}
+{.compile(srcPath & "/timestamp.c", flags).}
+{.compile(srcPath & "/udp.c", flags).}
+{.compile(srcPath & "/upnp.c", flags).}
+{.compile(srcPath & "/util.c", flags).}
 
 const
   PLUM_ERR_SUCCESS* = cint(0)
