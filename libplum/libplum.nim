@@ -31,22 +31,9 @@ when defined(windows):
 else:
   {.passl: "-lpthread".}
 
-{.compile(srcPath & "/addr.c", flags).}
-{.compile(srcPath & "/client.c", flags).}
-{.compile(srcPath & "/dummytls.c", flags).}
+{.compile(rootPath & "/libplum_units.c", flags).}
 {.compile(srcPath & "/http.c", flags).}
-{.compile(srcPath & "/log.c", flags).}
-{.compile(srcPath & "/natpmp.c", flags).}
-{.compile(srcPath & "/net.c", flags).}
-{.compile(srcPath & "/noprotocol.c", flags).}
-{.compile(srcPath & "/pcp.c", flags).}
-{.compile(srcPath & "/plum.c", flags).}
-{.compile(srcPath & "/random.c", flags).}
-{.compile(srcPath & "/tcp.c", flags).}
-{.compile(srcPath & "/timestamp.c", flags).}
-{.compile(srcPath & "/udp.c", flags).}
 {.compile(srcPath & "/upnp.c", flags).}
-{.compile(srcPath & "/util.c", flags).}
 
 const
   PLUM_ERR_SUCCESS* = cint(0)
