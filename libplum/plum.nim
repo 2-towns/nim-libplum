@@ -10,7 +10,9 @@ import std/atomics
 import chronos
 import chronos/threadsync
 import results
-import ./libplum
+import libplum
+
+{.localPassC: libplum.flags.}
 
 # libplum declares some parameters as `const T*` in C (read-only pointer).
 # Nim has no equivalent, so the generated C code drops the `const`, causing

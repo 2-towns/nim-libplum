@@ -1,7 +1,7 @@
 FROM ubuntu:24.04
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    cmake gcc make git curl ca-certificates xz-utils \
+    gcc make git curl ca-certificates xz-utils \
     libc-dev \
     iproute2 \
     && rm -rf /var/lib/apt/lists/*
@@ -34,18 +34,10 @@ RUN curl -fsSL "https://nim-lang.org/download/nim-${NIM_VERSION}-linux_x64.tar.x
 # Install nim deps (cached layer)
 WORKDIR /app
 COPY libplum.nimble .
+COPY libplum_units.c .
 COPY libplum/ libplum/
 COPY vendor/ vendor/
 RUN nimble setup -y
-
-# Build libplum static library
-RUN rm -rf vendor/libplum/build && \
-    cmake -B vendor/libplum/build \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DBUILD_SHARED_LIBS=OFF \
-    vendor/libplum && \
-    cmake --build vendor/libplum/build && \
-    cp vendor/libplum/build/libplum.a vendor/libplum/libplum.a
 
 # Compile test binaries (protocol x memory manager)
 COPY tests/ tests/
