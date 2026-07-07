@@ -39,9 +39,6 @@ COPY libplum/ libplum/
 COPY vendor/ vendor/
 RUN nimble setup -y
 
-# Build libplum static library
-RUN nimble buildBundledLibs
-
 # Compile test binaries (protocol x memory manager)
 COPY tests/ tests/
 RUN nim c -d:miniupnp_protocol=pcp   --mm:orc  --threads:on -o:tests/test_pcp_orc   tests/test_plum.nim && \
