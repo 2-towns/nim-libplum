@@ -1,10 +1,10 @@
-FROM ubuntu:24.04
+FROM nimlang/nim:latest
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc make git curl ca-certificates xz-utils \
     libc-dev \
     iproute2 \
-    && rm -rf /var/lib/apt/lists/*
+    && apt-get dist-clean
 
 # Build miniupnpd with stub redirector: no iptables/nftables needed, always
 # returns success for port mapping requests — safe for isolated test containers.
@@ -23,13 +23,6 @@ RUN git clone --depth=1 --branch miniupnpd_2_3_9 \
     && make NETFILTEROBJS=stub_rdr.o miniupnpd \
     && install -m 755 miniupnpd /usr/local/sbin/miniupnpd-natpmponly \
     && rm -rf /tmp/miniupnp /tmp/stub_rdr.c
-
-# Install Nim
-ARG NIM_VERSION=2.2.10
-RUN curl -fsSL "https://nim-lang.org/download/nim-${NIM_VERSION}-linux_x64.tar.xz" \
-    | tar -xJ -C /opt && \
-    ln -s "/opt/nim-${NIM_VERSION}/bin/nim" /usr/local/bin/nim && \
-    ln -s "/opt/nim-${NIM_VERSION}/bin/nimble" /usr/local/bin/nimble
 
 # Install nim deps (cached layer)
 WORKDIR /app
