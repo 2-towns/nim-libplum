@@ -13,20 +13,10 @@ requires "nim >= 1.6.0",
          "chronos >= 4.2.0 & < 5.0.0",
          "unittest2"
 
-proc compileStaticLibraries() =
-  withDir "vendor/libplum":
-    exec("cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF")
-    exec("cmake --build build")
-    cpFile("build/libplum.a", "libplum.a")
-
 task format, "format Nim code using nph":
   exec "nph libplum/ tests/"
 
-task buildBundledLibs, "build bundled libraries":
-  compileStaticLibraries()
-
 task test, "run tests":
-  compileStaticLibraries()
   exec("nimble setup")
   exec("nim c -o:tests/test_plum tests/test_plum.nim")
   exec("./tests/test_plum")
@@ -40,6 +30,3 @@ task testIntegration, "run miniupnpd integration tests in Docker / Podman":
   exec(docker & " run --rm --cap-add=NET_ADMIN -e TEST_MINIUPNP_PCP=1" & flags & " " & packageName)
   exec(docker & " run --rm --cap-add=NET_ADMIN -e TEST_MINIUPNP_UPNP=1" & flags & " " & packageName)
   exec(docker & " run --rm --cap-add=NET_ADMIN -e TEST_MINIUPNP_NATPMP=1" & flags & " " & packageName)
-
-before install:
-  compileStaticLibraries()

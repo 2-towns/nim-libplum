@@ -25,9 +25,6 @@ jobs:
       - name: Unit tests
         # same reason as integration tests: nimble exits with code 0 even on failure.
         run: |
-          cmake -B vendor/libplum/build -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF vendor/libplum
-          cmake --build vendor/libplum/build
-          cp vendor/libplum/build/libplum.a vendor/libplum/libplum.a
           nim c -o:tests/test_plum tests/test_plum.nim
           ./tests/test_plum
 

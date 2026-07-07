@@ -6,20 +6,36 @@
 # This file may not be copied, modified, or distributed except according to
 # those terms.
 
-import std/[os, strutils]
+import std/[os, sequtils, strutils]
 
 const
   rootPath = currentSourcePath.parentDir().parentDir().replace('\\', '/')
   libplumPath = rootPath & "/vendor/libplum"
   includePath = libplumPath & "/include/plum"
-  libraryPath = libplumPath & "/libplum.a"
-{.passc: "-I" & includePath & " -DPLUM_STATIC".}
-{.passl: libraryPath.}
+  srcPath = libplumPath & "/src"
+
+  includes = @["-I" & includePath, "-I" & srcPath]
+
+  defs = @["-DPLUM_STATIC", "-DPLUM_EXPORTS", "-DRELEASE=1", "-D_GNU_SOURCE"]
+
+  pdefs =
+    when defined(windows):
+      @["-DWIN32_LEAN_AND_MEAN"]
+    else:
+      @[]
+
+  flags* = (includes & defs & pdefs).mapIt(it.quoteShell()).join(" ")
+
+{.localPassC: flags.}
 
 when defined(windows):
   {.passl: "-lws2_32 -liphlpapi -lbcrypt".}
 else:
   {.passl: "-lpthread".}
+
+{.compile(rootPath & "/libplum_units.c", flags).}
+{.compile(srcPath & "/http.c", flags).}
+{.compile(srcPath & "/upnp.c", flags).}
 
 const
   PLUM_ERR_SUCCESS* = cint(0)
