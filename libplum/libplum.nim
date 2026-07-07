@@ -26,6 +26,8 @@ const
 
   flags* = (includes & defs & pdefs).mapIt(it.quoteShell()).join(" ")
 
+{.localPassC: flags.}
+
 when defined(windows):
   {.passl: "-lws2_32 -liphlpapi -lbcrypt".}
 else:
