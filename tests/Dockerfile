@@ -34,6 +34,7 @@ RUN curl -fsSL "https://nim-lang.org/download/nim-${NIM_VERSION}-linux_x64.tar.x
 # Install nim deps (cached layer)
 WORKDIR /app
 COPY libplum.nimble .
+COPY libplum_units.c .
 COPY libplum/ libplum/
 COPY vendor/ vendor/
 RUN nimble setup -y
