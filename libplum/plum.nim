@@ -37,6 +37,11 @@ type
     TCP = PLUM_IP_PROTOCOL_TCP.int
     UDP = PLUM_IP_PROTOCOL_UDP.int
 
+  ProtocolFilter* {.pure.} = enum
+    Any = PLUM_PROTOCOL_ANY.int
+    PCP = PLUM_PROTOCOL_PCP.int
+    UPnP = PLUM_PROTOCOL_UPNP.int
+
   PlumLogLevel* {.pure.} = enum
     Verbose = PLUM_LOG_LEVEL_VERBOSE.int
     Debug = PLUM_LOG_LEVEL_DEBUG.int
@@ -161,8 +166,11 @@ proc init*(
     discoverTimeout: int32 = 0,
     mappingTimeout: int32 = 0,
     recheckPeriod: int32 = 0,
+    protocol: ProtocolFilter = ProtocolFilter.Any,
 ): Result[void, string] =
   ## init MUST be called to setup internal plum thread (plum_init).
+  ## protocol restricts discovery to a single family (PCP/NAT-PMP or UPnP);
+  ## ProtocolFilter.Any tries all.
 
   var config = plum_config_t(
     log_level: plum_log_level_t(logLevel.int),
@@ -171,6 +179,7 @@ proc init*(
     discover_timeout: discoverTimeout.cint,
     mapping_timeout: mappingTimeout.cint,
     recheck_period: recheckPeriod.cint,
+    protocol: plum_protocol_t(protocol.int),
   )
 
   let res = plum_init(addr config)

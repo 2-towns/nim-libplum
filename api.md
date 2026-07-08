@@ -27,6 +27,13 @@ type MappingProtocol* = enum
 ```
 
 ```nim
+type ProtocolFilter* {.pure.} = enum
+  Any   ## try all protocols (default)
+  PCP   ## PCP/NAT-PMP only
+  UPnP  ## UPnP only
+```
+
+```nim
 type PlumMapping* = object
   protocol*: PlumProtocol        ## IP protocol (TCP/UDP)
   mappingProtocol*: MappingProtocol  ## NAT traversal protocol used
@@ -55,7 +62,8 @@ proc init*(
     logLevel: plum_log_level_t = PLUM_LOG_LEVEL_NONE,
     discoverTimeout: int = 0,
     mappingTimeout: int = 0,
-    recheckPeriod: int = 0
+    recheckPeriod: int = 0,
+    protocol: ProtocolFilter = ProtocolFilter.Any
 ): Result[void, string]
 ```
 
@@ -65,6 +73,7 @@ Initializes the library and starts the internal thread. Must be called before an
 - `discoverTimeout`: how long to probe for a NAT device, in ms (default: 10000)
 - `mappingTimeout`: how long to wait for a mapping response, in ms (default: 10000)
 - `recheckPeriod`: interval between periodic mapping rechecks, in ms (default: 300000)
+- `protocol`: restrict discovery to a single family (`ProtocolFilter.PCP` for PCP/NAT-PMP, `ProtocolFilter.UPnP` for UPnP); `ProtocolFilter.Any` tries all (default)
 
 ### cleanup
 

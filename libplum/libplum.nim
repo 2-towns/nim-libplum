@@ -66,6 +66,13 @@ type
     PLUM_IP_PROTOCOL_TCP = 0
     PLUM_IP_PROTOCOL_UDP = 1
 
+  plum_protocol_t* {.
+    importc: "plum_protocol_t", header: "plum.h", size: sizeof(cint)
+  .} = enum
+    PLUM_PROTOCOL_ANY = 0
+    PLUM_PROTOCOL_PCP = 1
+    PLUM_PROTOCOL_UPNP = 2
+
   plum_state_t* {.importc: "plum_state_t", header: "plum.h", size: sizeof(cint).} = enum
     PLUM_STATE_DESTROYED = 0
     PLUM_STATE_PENDING = 1
@@ -96,6 +103,8 @@ type
       # msecs, 0 means use default (10000)
     recheck_period* {.importc: "recheck_period".}: cint
       # msecs, 0 means use default (300000)
+    protocol* {.importc: "protocol".}: plum_protocol_t
+      # PLUM_PROTOCOL_ANY means try all
 
   # Define the mapping struct, passed by copy (usual for struct).
   # The user_ptr is a pointer to the MappingHandle in order to receive the result

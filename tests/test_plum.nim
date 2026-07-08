@@ -210,3 +210,40 @@ when miniupnp_protocol != "":
       # no destroyMapping on purpose: cleanup must release everything
       check cleanup().isOk()
       check activeMappingCount() == 0
+
+    # miniupnpd in the pcp container also serves UPnP, so a UPnP filter must
+    # override the default PCP-first selection.
+    when miniupnp_protocol == "pcp":
+      test "protocol filter selects UPnP even when PCP is available":
+        require init(
+          discoverTimeout = discoverMs.int32,
+          logLevel = logLevel,
+          protocol = ProtocolFilter.UPnP,
+        )
+          .isOk()
+        defer:
+          discard cleanup()
+
+        let r = waitFor createMapping(TCP, 8111, timeout = mappingTimeout)
+        require r.isOk()
+        let res = r.value
+        defer:
+          destroyMapping(res.id)
+
+        check res.mapping.mappingProtocol == UPnP
+
+    # miniupnpd in the upnp container has PCP/NAT-PMP disabled, so a PCP filter
+    # must not fall back to UPnP: the mapping cannot succeed.
+    when miniupnp_protocol == "upnp":
+      test "protocol filter PCP does not fall back to UPnP":
+        require init(
+          discoverTimeout = discoverMs.int32,
+          logLevel = logLevel,
+          protocol = ProtocolFilter.PCP,
+        )
+          .isOk()
+        defer:
+          discard cleanup()
+
+        let r = waitFor createMapping(TCP, 8112, timeout = mappingTimeout)
+        check r.isErr()
