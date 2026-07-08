@@ -1,7 +1,7 @@
 mode = ScriptMode.Verbose
 
 packageName   = "libplum"
-version       = "0.0.1"
+version       = "0.6.0"
 author        = "Status Research & Development GmbH"
 description   = "Nim binding for libplum (PCP, NAT-PMP, UPnP-IGD port mapping)"
 license       = "Apache License 2.0 or MIT"
