@@ -34,31 +34,36 @@ export results
 
 type
   PlumProtocol* = enum
-    TCP = PLUM_IP_PROTOCOL_TCP.int
-    UDP = PLUM_IP_PROTOCOL_UDP.int
+    TCP = ord(PLUM_IP_PROTOCOL_TCP)
+    UDP = ord(PLUM_IP_PROTOCOL_UDP)
+
+  ProtocolFilter* {.pure.} = enum
+    Any = ord(PLUM_PROTOCOL_ANY)
+    PCP = ord(PLUM_PROTOCOL_PCP)
+    UPnP = ord(PLUM_PROTOCOL_UPNP)
 
   PlumLogLevel* {.pure.} = enum
-    Verbose = PLUM_LOG_LEVEL_VERBOSE.int
-    Debug = PLUM_LOG_LEVEL_DEBUG.int
-    Info = PLUM_LOG_LEVEL_INFO.int
-    Warn = PLUM_LOG_LEVEL_WARN.int
-    Error = PLUM_LOG_LEVEL_ERROR.int
-    Fatal = PLUM_LOG_LEVEL_FATAL.int
-    None = PLUM_LOG_LEVEL_NONE.int
+    Verbose = ord(PLUM_LOG_LEVEL_VERBOSE)
+    Debug = ord(PLUM_LOG_LEVEL_DEBUG)
+    Info = ord(PLUM_LOG_LEVEL_INFO)
+    Warn = ord(PLUM_LOG_LEVEL_WARN)
+    Error = ord(PLUM_LOG_LEVEL_ERROR)
+    Fatal = ord(PLUM_LOG_LEVEL_FATAL)
+    None = ord(PLUM_LOG_LEVEL_NONE)
 
   PlumState* = enum
-    Destroyed = PLUM_STATE_DESTROYED.int
-    Pending = PLUM_STATE_PENDING.int
-    Success = PLUM_STATE_SUCCESS.int
-    Failure = PLUM_STATE_FAILURE.int
-    Destroying = PLUM_STATE_DESTROYING.int
+    Destroyed = ord(PLUM_STATE_DESTROYED)
+    Pending = ord(PLUM_STATE_PENDING)
+    Success = ord(PLUM_STATE_SUCCESS)
+    Failure = ord(PLUM_STATE_FAILURE)
+    Destroying = ord(PLUM_STATE_DESTROYING)
 
   MappingProtocol* = enum
-    Unknown = PLUM_MAPPING_PROTOCOL_UNKNOWN.int
-    PCP = PLUM_MAPPING_PROTOCOL_PCP.int
-    NatPmp = PLUM_MAPPING_PROTOCOL_NATPMP.int
-    UPnP = PLUM_MAPPING_PROTOCOL_UPNP.int
-    Direct = PLUM_MAPPING_PROTOCOL_DIRECT.int
+    Unknown = ord(PLUM_MAPPING_PROTOCOL_UNKNOWN)
+    PCP = ord(PLUM_MAPPING_PROTOCOL_PCP)
+    NatPmp = ord(PLUM_MAPPING_PROTOCOL_NATPMP)
+    UPnP = ord(PLUM_MAPPING_PROTOCOL_UPNP)
+    Direct = ord(PLUM_MAPPING_PROTOCOL_DIRECT)
 
   PlumMapping* = object
     protocol*: PlumProtocol
@@ -161,8 +166,11 @@ proc init*(
     discoverTimeout: int32 = 0,
     mappingTimeout: int32 = 0,
     recheckPeriod: int32 = 0,
+    protocol: ProtocolFilter = ProtocolFilter.Any,
 ): Result[void, string] =
   ## init MUST be called to setup internal plum thread (plum_init).
+  ## protocol restricts discovery to a single family (PCP/NAT-PMP or UPnP);
+  ## ProtocolFilter.Any tries all.
 
   var config = plum_config_t(
     log_level: plum_log_level_t(logLevel.int),
@@ -171,6 +179,7 @@ proc init*(
     discover_timeout: discoverTimeout.cint,
     mapping_timeout: mappingTimeout.cint,
     recheck_period: recheckPeriod.cint,
+    protocol: plum_protocol_t(protocol.int),
   )
 
   let res = plum_init(addr config)

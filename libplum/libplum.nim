@@ -52,35 +52,40 @@ type
   plum_log_level_t* {.
     importc: "plum_log_level_t", header: "plum.h", size: sizeof(cint)
   .} = enum
-    PLUM_LOG_LEVEL_VERBOSE = 0
-    PLUM_LOG_LEVEL_DEBUG = 1
-    PLUM_LOG_LEVEL_INFO = 2
-    PLUM_LOG_LEVEL_WARN = 3
-    PLUM_LOG_LEVEL_ERROR = 4
-    PLUM_LOG_LEVEL_FATAL = 5
-    PLUM_LOG_LEVEL_NONE = 6
+    PLUM_LOG_LEVEL_VERBOSE
+    PLUM_LOG_LEVEL_DEBUG
+    PLUM_LOG_LEVEL_INFO
+    PLUM_LOG_LEVEL_WARN
+    PLUM_LOG_LEVEL_ERROR
+    PLUM_LOG_LEVEL_FATAL
+    PLUM_LOG_LEVEL_NONE
 
   plum_ip_protocol_t* {.
     importc: "plum_ip_protocol_t", header: "plum.h", size: sizeof(cint)
   .} = enum
-    PLUM_IP_PROTOCOL_TCP = 0
-    PLUM_IP_PROTOCOL_UDP = 1
+    PLUM_IP_PROTOCOL_TCP
+    PLUM_IP_PROTOCOL_UDP
+
+  plum_protocol_t* {.importc: "plum_protocol_t", header: "plum.h", size: sizeof(cint).} = enum
+    PLUM_PROTOCOL_ANY
+    PLUM_PROTOCOL_PCP
+    PLUM_PROTOCOL_UPNP
 
   plum_state_t* {.importc: "plum_state_t", header: "plum.h", size: sizeof(cint).} = enum
-    PLUM_STATE_DESTROYED = 0
-    PLUM_STATE_PENDING = 1
-    PLUM_STATE_SUCCESS = 2
-    PLUM_STATE_FAILURE = 3
-    PLUM_STATE_DESTROYING = 4
+    PLUM_STATE_DESTROYED
+    PLUM_STATE_PENDING
+    PLUM_STATE_SUCCESS
+    PLUM_STATE_FAILURE
+    PLUM_STATE_DESTROYING
 
   plum_mapping_protocol_t* {.
     importc: "plum_mapping_protocol_t", header: "plum.h", size: sizeof(cint)
   .} = enum
-    PLUM_MAPPING_PROTOCOL_UNKNOWN = 0
-    PLUM_MAPPING_PROTOCOL_PCP = 1
-    PLUM_MAPPING_PROTOCOL_NATPMP = 2
-    PLUM_MAPPING_PROTOCOL_UPNP = 3
-    PLUM_MAPPING_PROTOCOL_DIRECT = 4
+    PLUM_MAPPING_PROTOCOL_UNKNOWN
+    PLUM_MAPPING_PROTOCOL_PCP
+    PLUM_MAPPING_PROTOCOL_NATPMP
+    PLUM_MAPPING_PROTOCOL_UPNP
+    PLUM_MAPPING_PROTOCOL_DIRECT
 
   # Define the callback to receive the plum logs
   plum_log_callback_t* = proc(level: plum_log_level_t, message: cstring) {.cdecl.}
@@ -96,6 +101,7 @@ type
       # msecs, 0 means use default (10000)
     recheck_period* {.importc: "recheck_period".}: cint
       # msecs, 0 means use default (300000)
+    protocol* {.importc: "protocol".}: plum_protocol_t # PLUM_PROTOCOL_ANY means try all
 
   # Define the mapping struct, passed by copy (usual for struct).
   # The user_ptr is a pointer to the MappingHandle in order to receive the result
