@@ -6,6 +6,7 @@ author        = "Status Research & Development GmbH"
 description   = "Nim binding for libplum (PCP, NAT-PMP, UPnP-IGD port mapping)"
 license       = "Apache License 2.0 or MIT"
 installDirs   = @["libplum", "vendor"]
+installFiles  = @["libplum_units.c"]
 
 ### Dependencies
 requires "nim >= 1.6.0",
