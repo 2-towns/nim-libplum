@@ -272,7 +272,7 @@ proc createMapping*(
   try:
     # Wait for the signal's single fire (in mappingCallback)
     completed = await withTimeout(signal.wait(), timeout)
-  except CancelledError:
+  except CancelledError as e:
     # The chronos thread was cancelled.
     # Here we have 2 situations:
     # 1. DESTROYED already fired, so libplum released the handle and our own
@@ -280,7 +280,7 @@ proc createMapping*(
     # 2. DESTROYED has not fired yet, so we only mark the handle as released
     # and let the libplum thread deallocate it from the callback.
     await destroyAndReclaim(id, handle)
-    raise
+    raise e
 
   if not completed:
     # The mapping timed out.
