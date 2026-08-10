@@ -21,6 +21,11 @@ task test, "run tests":
   exec("nim c -o:tests/test_plum tests/test_plum.nim")
   exec("./tests/test_plum")
 
+task testRefc, "run tests under refc":
+  exec("nimble setup")
+  exec("nim c --mm:refc -d:useGcAssert -o:tests/test_plum_refc tests/test_plum.nim")
+  exec("./tests/test_plum_refc")
+
 task testIntegration, "run miniupnpd integration tests in Docker / Podman":
   let docker = if findExe("podman") != "": "podman" else: "docker"
   exec(docker & " build -t " & packageName & " -f tests/Dockerfile .")

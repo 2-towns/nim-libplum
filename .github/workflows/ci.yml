@@ -28,6 +28,11 @@ jobs:
           nim c -o:tests/test_plum tests/test_plum.nim
           ./tests/test_plum
 
+      - name: Unit tests (refc)
+        run: |
+          nim c --mm:refc -d:useGcAssert -o:tests/test_plum_refc tests/test_plum.nim
+          ./tests/test_plum_refc
+
       - name: Integration tests
         # we call docker directly instead of nimble testIntegration because nimble
         # exits with code 0 even when exec() fails, which would make CI pass on failure.
