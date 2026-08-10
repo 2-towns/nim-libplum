@@ -143,8 +143,7 @@ proc mappingCallback(id: cint, state: plum_state_t, raw: ptr plum_mapping_t) {.c
       discard activeMappings.fetchSub(1)
 
       # Here we make sure that resolved was called only for the first time.
-      # If it was already called, it means that the mapping was already resolved
-      # and firing the signal again would be a use-after-free.
+      # If it was already called, it means that the mapping was already resolved.
       if not handle.resolved.exchange(true):
         handle.resolvedState = Destroyed
         discard handle.signal.fireSync()
