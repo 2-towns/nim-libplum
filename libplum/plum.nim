@@ -87,8 +87,8 @@ type
     # The handle object can be manipulated by 2 threads:
     # 1. The chronos thread that calls createMapping and waits for the result.
     # 2. The libplum thread that calls mappingCallback.
-    # When the handle is released by both, the handle can be deallocated.
-    released: Atomic[bool]
+    # Atomic ref count.
+    refCount: Atomic[int]
     # Indicate that the first call of the mapping handle is
     # done. In that case, resolved* variables
     # will contain the result.
@@ -105,11 +105,10 @@ type
 
   MappingHandle = ptr MappingHandleObj
 
-proc release(handle: MappingHandle) =
-  ## release will deallocate the handle if the handle is released
-  ## by both the chronos thread and the libplum thread.
-  if handle.released.exchange(true):
-    deallocShared(handle)
+proc unref[T](sharedObj: T) =
+  # When the refcount drops to zero, we deallocate.
+  if (sharedObj.refCount.fetchSub(1) - 1) == 0:
+    deallocShared(sharedObj)
 
 # libplum calls mappingCallback from its own C thread. Under refc, any thread
 # that touches Nim objects must register with the GC first.
@@ -151,7 +150,7 @@ proc mappingCallback(id: cint, state: plum_state_t, raw: ptr plum_mapping_t) {.c
       # Release the handle: the mapping is destroyed and libplum will never call
       # this callback again. If the chronos thread released it already, this
       # deallocates it. Otherwise the chronos thread will.
-      handle.release()
+      handle.unref()
       return
 
     # Skip states other than Success and Failure (not expected)
@@ -235,7 +234,7 @@ proc destroyAndReclaim(id: cint, handle: MappingHandle) {.async: (raises: []).} 
   # If the libplum thread is stuck, the deallocation will not happen until it
   # fires DESTROYED: this is expected! We do not want to deallocate it while
   # the libplum thread could still use it.
-  handle.release()
+  handle.unref()
 
 proc createMapping*(
     protocol: PlumProtocol,
@@ -249,6 +248,7 @@ proc createMapping*(
 
   # Create a shared handle to be used by both the chronos thread and the libplum thread.
   let handle = createShared(MappingHandleObj)
+  handle.refCount.store(2)
   handle.signal = signal
   handle.onStateChange = onStateChange
 
@@ -262,8 +262,8 @@ proc createMapping*(
   let id = plum_create_mapping(addr req, mappingCallback)
   if id < 0:
     # The callback might still be called even when creation reports failure.
-    # So we use release instead of deallocShared to avoid a use-after-free.
-    handle.release()
+    # So we use unref instead of deallocShared to avoid a use-after-free.
+    handle.unref()
     return err("plum_create_mapping failed: " & $id)
 
   discard activeMappings.fetchAdd(1)
@@ -300,10 +300,10 @@ proc createMapping*(
     externalHost: $cast[cstring](unsafeAddr handle.resolvedExternalHost),
   )
 
-  # The handle is marked as released. It is deallocated only if the libplum
+  # Decreases the reference counter. It is deallocated only if the libplum
   # thread already released it.
   # It should be released by the libplum thread when DESTROYED is fired.
-  handle.release()
+  handle.unref()
 
   if resolvedState == Success:
     return ok(MappingResult(id: id, mapping: resolvedMapping))
