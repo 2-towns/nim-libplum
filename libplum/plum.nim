@@ -139,14 +139,12 @@ proc mappingCallback(id: cint, state: plum_state_t, raw: ptr plum_mapping_t) {.c
     # We can be in a Destroyed state if:
     # 1. destroyMapping or cleanup is called.
     # 2. The mapping is destroyed by destroyAndReclaim after a timeout or a cancellation.
-    # A waiter may still be there in either case, since cleanup can land while
-    # createMapping is suspended, so the gate below decides and not the case.
     if plumState == Destroyed:
       discard activeMappings.fetchSub(1)
 
-      # Fire only if nobody claimed the signal's single fire yet. If it was
-      # already claimed, createMapping has closed the signal and firing here
-      # would be a use-after-free.
+      # Here we make sure that resolved was called only for the first time.
+      # If it was already called, it means that the mapping was already resolved
+      # and firing the signal again would be a use-after-free.
       if not handle.resolved.exchange(true):
         handle.resolvedState = Destroyed
         discard handle.signal.fireSync()
@@ -231,14 +229,13 @@ proc destroyAndReclaim(id: cint, handle: MappingHandle) {.async: (raises: []).} 
 
   # Wait for the libplum thread to fire the destroy signal.
   if await noCancel withTimeout(handle.signal.wait(), destroyConfirmTimeout):
-    # Receiving the single fire proves the callback is past, so closing is safe.
-    # Otherwise we never close it: the libplum thread may still fire.
+    # After it is destroyed we can safely close the signal because we will not
+    # use it anymore.
     discard handle.signal.close()
 
-  # If the libplum thread is stuck, this release is the first one and frees
-  # nothing: the libplum thread will deallocate when DESTROYED finally fires.
-  # This is expected! We do not want to deallocate it while the libplum thread
-  # could still use it.
+  # If the libplum thread is stuck, the deallocation will not happen until it
+  # fires DESTROYED: this is expected! We do not want to deallocate it while
+  # the libplum thread could still use it.
   handle.release()
 
 proc createMapping*(
@@ -304,8 +301,9 @@ proc createMapping*(
     externalHost: $cast[cstring](unsafeAddr handle.resolvedExternalHost),
   )
 
-  # Release the handle. On a live mapping libplum still holds it, so this only
-  # marks it: the DESTROYED callback is the one that deallocates, later.
+  # The handle is marked as released. It is deallocated only if the libplum
+  # thread already released it.
+  # It should be released by the libplum thread when DESTROYED is fired.
   handle.release()
 
   if resolvedState == Success:
