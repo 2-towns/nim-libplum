@@ -31,9 +31,12 @@ Debug env vars: `LIBPLUM_VERBOSE=1`, `TEST_VERBOSE=1`, `MINIUPNPD_VERBOSE=1`.
   chronos loop thread after consuming that fire. Never call
   `ThreadSignalPtr.close()` from the C thread: close() unregisters the fd
   from the *calling* thread's dispatcher
-- `MappingHandle` is pinned with `GC_ref` while libplum holds `user_ptr`;
-  unpinned only in the DESTROYED callback
-- `activeMappings` is an `Atomic[int]` counting pinned handles; libplum is the source of truth for mapping state
+- `MappingHandle` is `createShared` memory, never a Nim `ref`: `GC_ref`/`GC_unref`
+  keep their root list in thread-local GC state, so pinning on the chronos thread
+  and unpinning on the C thread leaves a dangling root that trips `markGlobals`.
+  createMapping and libplum's C thread both use it; the second to call
+  `release()` frees it (`released.exchange`)
+- `activeMappings` is an `Atomic[int]` counting live handles; libplum is the source of truth for mapping state
   (`hasMapping`)
 - The wrapper relies on a libplum guarantee: DESTROYED fires exactly once for
   every created mapping (explicit destroy, or `destroy_all_mappings` during
