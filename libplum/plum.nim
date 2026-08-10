@@ -83,7 +83,7 @@ type
 
   MappingHandleObj = object
     signal: ThreadSignalPtr
-    # Define a two-owner release pattern.
+    # Define a release pattern.
     # The handle object can be manipulated by 2 threads:
     # 1. The chronos thread that calls createMapping and waits for the result.
     # 2. The libplum thread that calls mappingCallback.
@@ -103,9 +103,6 @@ type
     resolvedExternalHost: array[PLUM_MAX_HOST_LEN, char]
     onStateChange: PlumStateCallback
 
-  # Shared memory, never a Nim ref: GC_ref/GC_unref track their roots in
-  # thread-local GC state, so pinning on the chronos thread and unpinning on
-  # the libplum thread leaves a dangling root behind.
   MappingHandle = ptr MappingHandleObj
 
 proc release(handle: MappingHandle) =
