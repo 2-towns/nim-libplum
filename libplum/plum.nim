@@ -81,8 +81,14 @@ type
     ## libplum's internal C thread, not the chronos loop: only touch
     ## thread-safe state from it (e.g. Atomic), never chronos APIs.
 
-  MappingHandle = ref object
+  MappingHandleObj = object
     signal: ThreadSignalPtr
+    # Define a release pattern.
+    # The handle object can be manipulated by 2 threads:
+    # 1. The chronos thread that calls createMapping and waits for the result.
+    # 2. The libplum thread that calls mappingCallback.
+    # When the handle is released by both, the handle can be deallocated.
+    released: Atomic[bool]
     # Indicate that the first call of the mapping handle is
     # done. In that case, resolved* variables
     # will contain the result.
@@ -96,6 +102,14 @@ type
     resolvedExternalPort: uint16
     resolvedExternalHost: array[PLUM_MAX_HOST_LEN, char]
     onStateChange: PlumStateCallback
+
+  MappingHandle = ptr MappingHandleObj
+
+proc release(handle: MappingHandle) =
+  ## release will deallocate the handle if the handle is released
+  ## by both the chronos thread and the libplum thread.
+  if handle.released.exchange(true):
+    deallocShared(handle)
 
 # libplum calls mappingCallback from its own C thread. Under refc, any thread
 # that touches Nim objects must register with the GC first.
@@ -121,33 +135,39 @@ proc mappingCallback(id: cint, state: plum_state_t, raw: ptr plum_mapping_t) {.c
       return
 
     let plumState = PlumState(state.int)
+
+    # We can be in a Destroyed state if:
+    # 1. destroyMapping or cleanup is called.
+    # 2. The mapping is destroyed by destroyAndReclaim after a timeout or a cancellation.
     if plumState == Destroyed:
       discard activeMappings.fetchSub(1)
 
+      # Here we make sure that resolved was called only for the first time.
+      # If it was already called, it means that the mapping was already resolved.
       if not handle.resolved.exchange(true):
-        # Set Destroyed state and fire the signal to notify any waiting threads.
         handle.resolvedState = Destroyed
         discard handle.signal.fireSync()
 
-      # Release the pin set in createMapping: the C library is done with the
-      # raw pointer and will never call this callback again for this mapping.
-      GC_unref(handle)
+      # Release the handle: the mapping is destroyed and libplum will never call
+      # this callback again. If the chronos thread released it already, this
+      # deallocates it. Otherwise the chronos thread will.
+      handle.release()
       return
 
-    # Skip states other than Success and Failure
+    # Skip states other than Success and Failure (not expected)
     if plumState notin {Success, Failure}:
       return
 
+    # Again, only the first to claim the fire records the result.
     if not handle.resolved.exchange(true):
-      # If this is the first time the handle mapping
-      # is called, let's set the result in the handle values,
-      # and fire the signal.
       handle.resolvedState = plumState
       handle.resolvedProtocol = PlumProtocol(raw[].protocol.int)
       handle.resolvedMappingProtocol = MappingProtocol(raw[].mapping_protocol.int)
       handle.resolvedInternalPort = raw[].internal_port
       handle.resolvedExternalPort = raw[].external_port
       handle.resolvedExternalHost = raw[].external_host
+
+      # Fire the signal to notify the chronos thread that the mapping is resolved.
       discard handle.signal.fireSync()
     else:
       # Otherwise, just call the callback
@@ -199,14 +219,23 @@ proc cleanup*(): Result[void, string] =
 
 const destroyConfirmTimeout = seconds(5)
 
-proc destroyAndReclaim(id: cint, signal: ThreadSignalPtr) {.async: (raises: []).} =
-  ## Tear the mapping down and close its signal once DESTROYED confirms
-  ## (the signal fires exactly once, see mappingCallback). If libplum never
-  ## confirms in time, leak the signal rather than closing it while the C
-  ## thread may still fire it.
+proc destroyAndReclaim(id: cint, handle: MappingHandle) {.async: (raises: []).} =
+  ## destroyAndReclaim is called when createMapping gives up on a mapping it
+  ## created, on timeout or on cancellation.
+  ## In that case we destroy the mapping created and then we release the handle.
+
   discard plum_destroy_mapping(id)
-  if await noCancel withTimeout(signal.wait(), destroyConfirmTimeout):
-    discard signal.close()
+
+  # Wait for the libplum thread to fire the destroy signal.
+  if await noCancel withTimeout(handle.signal.wait(), destroyConfirmTimeout):
+    # After it is destroyed we can safely close the signal because we will not
+    # use it anymore.
+    discard handle.signal.close()
+
+  # If the libplum thread is stuck, the deallocation will not happen until it
+  # fires DESTROYED: this is expected! We do not want to deallocate it while
+  # the libplum thread could still use it.
+  handle.release()
 
 proc createMapping*(
     protocol: PlumProtocol,
@@ -218,7 +247,10 @@ proc createMapping*(
   let signal = ThreadSignalPtr.new().valueOr:
     return err("plum: cannot create signal: " & $error)
 
-  let handle = MappingHandle(signal: signal, onStateChange: onStateChange)
+  # Create a shared handle to be used by both the chronos thread and the libplum thread.
+  let handle = createShared(MappingHandleObj)
+  handle.signal = signal
+  handle.onStateChange = onStateChange
 
   var req = plum_mapping_t(
     protocol: plum_ip_protocol_t(protocol.int),
@@ -227,14 +259,11 @@ proc createMapping*(
     user_ptr: cast[pointer](handle),
   )
 
-  # Pin the handle to prevent GC: the C library holds a raw pointer to
-  # it (user_ptr) and might use it until DESTROYED fires.
-  GC_ref(handle)
-
   let id = plum_create_mapping(addr req, mappingCallback)
   if id < 0:
-    GC_unref(handle)
-    discard signal.close()
+    # The callback might still be called even when creation reports failure.
+    # So we use release instead of deallocShared to avoid a use-after-free.
+    handle.release()
     return err("plum_create_mapping failed: " & $id)
 
   discard activeMappings.fetchAdd(1)
@@ -244,17 +273,22 @@ proc createMapping*(
     # Wait for the signal's single fire (in mappingCallback)
     completed = await withTimeout(signal.wait(), timeout)
   except CancelledError:
-    # The signal was cancelled so it is safe to destroy and reclaim.
-    await destroyAndReclaim(id, signal)
+    # The chronos thread was cancelled.
+    # Here we have 2 situations:
+    # 1. DESTROYED already fired, so libplum released the handle and our own
+    # release deallocates it.
+    # 2. DESTROYED has not fired yet, so we only mark the handle as released
+    # and let the libplum thread deallocate it from the callback.
+    await destroyAndReclaim(id, handle)
     raise
 
   if not completed:
-    # The signal was not fired so it is safe to destroy and reclaim.
-    await destroyAndReclaim(id, signal)
+    # The mapping timed out.
+    # Same as previously.
+    await destroyAndReclaim(id, handle)
     return err("plum: mapping " & $id & " timed out")
 
-  # The signal fired and was consumed: nobody will touch it again,
-  # safe to close here.
+  # We are done with the signal, we can just close it because we will not use it anymore.
   discard signal.close()
 
   let resolvedState = handle.resolvedState
@@ -265,6 +299,11 @@ proc createMapping*(
     externalPort: handle.resolvedExternalPort,
     externalHost: $cast[cstring](unsafeAddr handle.resolvedExternalHost),
   )
+
+  # The handle is marked as released. It is deallocated only if the libplum
+  # thread already released it.
+  # It should be released by the libplum thread when DESTROYED is fired.
+  handle.release()
 
   if resolvedState == Success:
     return ok(MappingResult(id: id, mapping: resolvedMapping))

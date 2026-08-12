@@ -10,6 +10,7 @@ nimcache/
 
 /examples/port_mapping
 /tests/test_plum
+/tests/test_plum_refc
 
 nimble.develop
 nimble.paths
