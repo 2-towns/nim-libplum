@@ -30,7 +30,7 @@ const
 
 when defined(windows):
   {.passl: "-lws2_32 -liphlpapi -lbcrypt".}
-else:
+elif not defined(android):
   {.passl: "-lpthread".}
 
 {.compile(rootPath & "/libplum_units.c", flags).}
